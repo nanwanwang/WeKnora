@@ -190,7 +190,7 @@ func (q *qdrantRepository) ensureCollection(ctx context.Context, dimension int) 
 		}
 
 		// Create payload indexes for filtering
-		indexFields := []string{fieldChunkID, fieldKnowledgeID, fieldKnowledgeBaseID, fieldSourceID}
+		indexFields := []string{fieldChunkID, fieldKnowledgeID, fieldKnowledgeBaseID, fieldSourceID, "exact_identifiers"}
 		for _, field := range indexFields {
 			_, err = q.client.CreateFieldIndex(ctx, &qdrant.CreateFieldIndexCollection{
 				CollectionName: collectionName,
@@ -808,7 +808,9 @@ func (q *qdrantRepository) KeywordsRetrieve(ctx context.Context,
 
 		// Build should conditions for each token (OR logic)
 		// This allows matching documents that contain any of the query tokens
-		if len(queryTokens) > 0 {
+		if identifiers := types.ExactIdentifiers(params.Query); len(identifiers) > 0 {
+			filter.Must = append(filter.Must, qdrant.NewMatchKeywords("exact_identifiers", identifiers...))
+		} else if len(queryTokens) > 0 {
 			shouldConditions := make([]*qdrant.Condition, 0, len(queryTokens))
 			for _, token := range queryTokens {
 				shouldConditions = append(shouldConditions, qdrant.NewMatchText(fieldContent, token))
@@ -1090,8 +1092,16 @@ func (q *qdrantRepository) CopyIndices(ctx context.Context,
 }
 
 func createPayload(embedding *QdrantVectorEmbedding) map[string]*qdrant.Value {
+	// NewValueMap accepts []any, not []string.
+	identifiers := types.ExactIdentifiers(embedding.Content)
+	identifierValues := make([]any, len(identifiers))
+	for i, identifier := range identifiers {
+		identifierValues[i] = identifier
+	}
+
 	payload := map[string]any{
 		fieldContent:         embedding.Content,
+		"exact_identifiers":  identifierValues,
 		fieldSourceID:        embedding.SourceID,
 		fieldSourceType:      int64(embedding.SourceType),
 		fieldChunkID:         embedding.ChunkID,
