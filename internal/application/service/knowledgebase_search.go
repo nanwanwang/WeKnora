@@ -364,6 +364,18 @@ func (s *knowledgeBaseService) hybridSearchCandidates(ctx context.Context,
 		retrievalCfg = tenantInfo.RetrievalConfig
 	}
 	deduplicatedChunks := fuseOrDeduplicate(ctx, vectorLists, keywordLists, retrievalCfg)
+	// Identifier lookup is an exact selection, not semantic similarity.
+	// Apply before candidate truncation so similar numbers cannot crowd out hits.
+	if identifiers := types.ExactIdentifiers(params.QueryText); len(identifiers) > 0 {
+		exact := make([]*types.IndexWithScore, 0)
+		for _, hit := range deduplicatedChunks {
+			if types.ContainsExactIdentifier(hit.Content, identifiers) {
+				hit.Score = 1
+				exact = append(exact, hit)
+			}
+		}
+		deduplicatedChunks = exact
+	}
 
 	kb.EnsureDefaults()
 
