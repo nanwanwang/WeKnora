@@ -41,6 +41,11 @@ jobs:
         run: |
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+      - name: Reclaim space on the disposable GitHub runner
+        shell: bash
+        run: |
+          sudo rm -rf /usr/local/lib/android /opt/ghc /usr/share/dotnet
+          df -h /
       - uses: docker/setup-buildx-action@v4
         with:
           buildkitd-config-inline: |
@@ -62,6 +67,8 @@ jobs:
           tags: ghcr.io/${{ steps.image.outputs.owner }}/weknora-${{ matrix.component }}:sha-${{ steps.image.outputs.sha }}
           build-args: |
             WITH_ANYDOC=1
+            COMMIT_ID_ARG=${{ steps.image.outputs.sha }}
+            VITE_FRONTEND_COMMIT=${{ steps.image.outputs.sha }}
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ steps.image.outputs.sha }}
