@@ -1,0 +1,67 @@
+name: Fork Stable Release Sync
+on:
+  schedule:
+    - cron: '23 1 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: fork-stable-release-sync
+  cancel-in-progress: false
+jobs:
+  sync:
+    if: github.repository == 'nanwanwang/WeKnora'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      candidate_sha: ${{ steps.sync.outputs.candidate_sha }}
+      pr_number: ${{ steps.sync.outputs.pr_number }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Open stable upgrade PR without changing main
+        id: sync
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts/fork/sync_stable.py
+  verify:
+    needs: sync
+    if: needs.sync.outputs.candidate_sha != ''
+    uses: ./.github/workflows/fork-verify.yml
+    with:
+      ref: ${{ needs.sync.outputs.candidate_sha }}
+  images:
+    needs: [sync, verify]
+    if: needs.sync.outputs.candidate_sha != ''
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/fork-images.yml
+    with:
+      ref: ${{ needs.sync.outputs.candidate_sha }}
+      publish: false
+  report:
+    needs: [sync, verify, images]
+    if: always() && needs.sync.outputs.candidate_sha != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      statuses: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Attach validation result to candidate commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CANDIDATE_SHA: ${{ needs.sync.outputs.candidate_sha }}
+          VERIFY_RESULT: ${{ needs.verify.result }}
+          IMAGES_RESULT: ${{ needs.images.result }}
+        run: python3 scripts/fork/report_status.py

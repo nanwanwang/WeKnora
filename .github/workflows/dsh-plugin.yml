@@ -208,7 +208,7 @@ jobs:
   publish:
     name: Publish to npm
     needs: [test, e2e]
-    if: startsWith(github.ref, 'refs/tags/dsh-weknora-v')
+    if: github.repository == 'Tencent/WeKnora' && startsWith(github.ref, 'refs/tags/dsh-weknora-v')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
