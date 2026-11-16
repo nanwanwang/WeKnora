@@ -58,6 +58,10 @@ type Options struct {
 	// TopK, when positive, MMR-selects at most TopK results. Otherwise every
 	// candidate that passed the threshold is returned, best first.
 	TopK int
+	// BalanceSources reserves knowledge and web slots for conversational retrieval.
+	// DiversifyDocuments applies only to broad, non-document-scoped topic queries.
+	BalanceSources     bool
+	DiversifyDocuments bool
 	// FallbackMinScore is the score the best candidate needs to be kept when
 	// nothing passes the threshold. See FallbackMinScore().
 	FallbackMinScore float64
@@ -209,7 +213,11 @@ func Rerank(
 		picks[i] = i
 	}
 	if opts.TopK > 0 {
-		picks = SelectMMR(ctx, res.Scored, min(opts.TopK, len(res.Scored)), DefaultMMRLambda)
+		if opts.BalanceSources {
+			picks = SelectBalanced(ctx, res.Scored, opts.TopK, query, opts.DiversifyDocuments)
+		} else {
+			picks = SelectMMR(ctx, res.Scored, min(opts.TopK, len(res.Scored)), DefaultMMRLambda)
+		}
 	}
 	res.Results = make([]*types.SearchResult, 0, len(picks))
 	res.Indices = make([]int, 0, len(picks))

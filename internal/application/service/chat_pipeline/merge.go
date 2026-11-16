@@ -114,10 +114,15 @@ func (p *PluginMerge) selectInputResults(ctx context.Context, chatManage *types.
 	if k := chatManage.RerankTopK; k > 0 && len(result) > k {
 		// Graph hits have no retrieval score (0) and would always fall
 		// below the cut; entity search already bounds how many it adds.
-		kept := result[:k:k]
-		for _, r := range result[k:] {
-			if r.MatchType == types.MatchTypeGraph {
+		kept := selectChatSources(ctx, result, k, chatManage)
+		selected := make(map[string]bool, len(kept))
+		for _, r := range kept {
+			selected[r.ID] = true
+		}
+		for _, r := range result {
+			if r.MatchType == types.MatchTypeGraph && !selected[r.ID] {
 				kept = append(kept, r)
+				selected[r.ID] = true
 			}
 		}
 		// This cut already hides candidates from the prompt, so record it

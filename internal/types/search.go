@@ -259,8 +259,10 @@ type SearchResult struct {
 type SearchParams struct {
 	// QueryText is required unless query_embedding is provided, keyword matching is disabled,
 	// and vector matching remains enabled.
-	QueryText      string    `json:"query_text" extensions:"x-agent,x-agent-required"`
-	QueryEmbedding []float32 `json:"query_embedding,omitempty"`
+	QueryText string `json:"query_text" extensions:"x-agent,x-agent-required"`
+	// EnableTitleMatch supplements conversational recall inside the same authorized scope.
+	EnableTitleMatch bool      `json:"-"`
+	QueryEmbedding   []float32 `json:"query_embedding,omitempty"`
 	// Minimum vector similarity a hit needs; 0 keeps every vector hit.
 	VectorThreshold float64 `json:"vector_threshold" extensions:"x-agent"`
 	// Minimum keyword score a hit needs; 0 keeps every keyword hit.

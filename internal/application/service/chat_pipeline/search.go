@@ -516,6 +516,7 @@ func (p *PluginSearch) searchByTargets(
 					defer innerWg.Done()
 
 					params := types.SearchParams{
+						EnableTitleMatch:      true,
 						QueryText:             queryText,
 						QueryEmbedding:        queryEmbedding,
 						KnowledgeBaseIDs:      fullKBIDs,
@@ -595,6 +596,7 @@ func (p *PluginSearch) searchSingleTarget(
 		})
 	}
 	params := types.SearchParams{
+		EnableTitleMatch:      true,
 		QueryText:             queryText,
 		QueryEmbedding:        queryEmbedding,
 		VectorThreshold:       vectorThreshold,
