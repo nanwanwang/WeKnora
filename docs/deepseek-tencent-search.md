@@ -10,3 +10,21 @@ In Settings > Web Search Configuration, add **DeepSeek Search** or **Tencent Clo
 - Live provider acceptance requires valid keys and quota. Offline tests use local HTTP fixtures and do not call paid services.
 
 Validation: `go test ./internal/infrastructure/web_search ./internal/application/service -run 'Standalone|Zhipu|Bocha|Registry'` and compile the application before deploying. Deployment must be limited to 148; 152 is explicitly excluded.
+
+## Build and test deployment
+
+The current v0.9.0 runtime was built with `-tags anydoc`. Preserve that flag and the parser library when rebuilding. The compatibility Dockerfile includes SQLite development headers and removes unused LLVM bitcode metadata from the Rust archive to satisfy the Go linker without disabling its checks.
+
+```sh
+docker build -f docker/Dockerfile.search-v090 --build-arg COMMIT_ID=$(git rev-parse HEAD) -t weknora-search:test .
+```
+
+The 148 test deployment on 2026-11-16 uses `weknora-mom-pilot-app:search-20261116`, code commit `921c916c38d616d3b1daa00d0ac6244960a19a41`, and a separate `compose.search.yml` image override beside the existing compose files. Include that override for subsequent test restarts:
+
+```sh
+docker compose --profile '*' -p weknora-mom-pilot -f docker-compose.yml -f compose.pilot.yml -f compose.search.yml up -d --no-deps --pull never app
+```
+
+Rollback: change only the app image in that override to the retained `weknora-mom-pilot-app:before-search-20261116` tag, then run the same command. No database migration is introduced by this branch.
+
+Verified: search adapter and service tests, complete application build with anydoc, healthy test container, both provider types returned by the authenticated API, temporary configuration creation/readback, hidden credentials, and removal of temporary test records. Live paid-provider calls remain pending: the user will enter real keys in the settings page. No changes were made to 152.

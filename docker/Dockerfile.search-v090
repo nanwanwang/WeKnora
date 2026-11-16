@@ -1,0 +1,34 @@
+# amd64 compatibility build for the v0.9.0 search-only branch.
+# Keeps the existing runtime assets and the anydoc parser feature.
+FROM rust:1-bookworm AS anydoc
+WORKDIR /src
+COPY third_party/anydoc-go ./third_party/anydoc-go
+COPY scripts/build-anydoc-lib.sh ./scripts/build-anydoc-lib.sh
+ENV CARGO_BUILD_JOBS=2
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    bash scripts/build-anydoc-lib.sh
+
+FROM golang:1.26-bookworm AS build
+RUN apt-get update && apt-get install -y --no-install-recommends libsqlite3-dev && rm -rf /var/lib/apt/lists/*
+WORKDIR /src
+ARG GOPROXY=https://proxy.golang.org,direct
+ENV GOPROXY=${GOPROXY}
+COPY . .
+COPY --from=anydoc /src/third_party/anydoc-go/lib ./third_party/anydoc-go/lib
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go test -p 2 ./internal/infrastructure/web_search ./internal/application/service -run 'Standalone|Zhipu|Bocha|Registry' -count=1
+ARG COMMIT_ID=unknown
+# Native object code is retained; unused LLVM metadata is rejected by modern Go.
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    objcopy --remove-section=.llvmbc --remove-section=.llvmcmd third_party/anydoc-go/lib/linux_amd64_gnu/libanydoc_go.a && \
+    go build -p 2 -tags anydoc -ldflags="-w -s -X github.com/Tencent/WeKnora/internal/handler.CommitID=${COMMIT_ID} -X github.com/Tencent/WeKnora/internal/handler.Edition=standard -X github.com/Tencent/WeKnora/internal/handler.Version=v0.9.0-search -X google.golang.org/protobuf/reflect/protoregistry.conflictPolicy=warn" -o /app-bin ./cmd/server
+
+FROM wechatopenai/weknora-app:v0.9.0
+ARG COMMIT_ID=unknown
+COPY --from=build /app-bin /app/WeKnora
+LABEL org.opencontainers.image.source="https://github.com/nanwanwang/WeKnora" \
+      org.opencontainers.image.revision="${COMMIT_ID}" \
+      org.opencontainers.image.version="v0.9.0-search"
