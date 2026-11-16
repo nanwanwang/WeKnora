@@ -375,9 +375,9 @@ func rewriteRefTag(r *sourceRegistry, tag string) string {
 }
 
 var (
-	numericRefIDRE    = regexp.MustCompile(`^[0-9]+$`)
-	refIDAttrRE       = regexp.MustCompile(`(?i)\bid\s*=\s*"([^"]*)"`)
-	refIDAttrSingleRE = regexp.MustCompile(`(?i)\bid\s*=\s*'([^']*)'`)
+	numericRefAttemptRE = regexp.MustCompile(`(?i)\bid\s*=\s*(?:["']\s*[0-9]+(?:\s*["']|\s*/?[>\]]|\s*$)|[0-9]+(?:\s*/?[>\]]|\s*$))`)
+	refIDAttrRE         = regexp.MustCompile(`(?i)\bid\s*=\s*"([^"]*)"`)
+	refIDAttrSingleRE   = regexp.MustCompile(`(?i)\bid\s*=\s*'([^']*)'`)
 )
 
 // keepLiteralRef reports a <ref> tag that is not a citation. c1/w1 are the
@@ -400,6 +400,12 @@ func keepLiteralRef(tag string) bool {
 	if strings.Contains(tag, "://") {
 		return false
 	}
+	// Also catch unquoted, truncated and nested numeric tags observed in
+	// model streams. Do not leave them literal merely because the outer ID
+	// attribute is incomplete or contains another ref wrapper.
+	if numericRefAttemptRE.MatchString(tag) {
+		return false
+	}
 	id, ok := citedRefID(tag)
 	if !ok {
 		return true
@@ -407,7 +413,7 @@ func keepLiteralRef(tag string) bool {
 	// Bare numeric IDs are ambiguous citation attempts, not literal examples.
 	// Never infer a chunk or web handle from a number: both namespaces can
 	// contain it, and only explicit current evidence may authorize a citation.
-	if id == "" || numericRefIDRE.MatchString(strings.TrimSpace(id)) || canonicalSourceHandle(id) != "" {
+	if id == "" || canonicalSourceHandle(id) != "" {
 		return false
 	}
 	return true
