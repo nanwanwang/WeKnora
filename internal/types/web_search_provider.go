@@ -16,6 +16,8 @@ type WebSearchProviderType string
 
 // Supported web search provider identifiers.
 const (
+	WebSearchProviderTypeDeepSeek   WebSearchProviderType = "deepseek"
+	WebSearchProviderTypeTencent    WebSearchProviderType = "tencent"
 	WebSearchProviderTypeBrave      WebSearchProviderType = "brave"
 	WebSearchProviderTypeBing       WebSearchProviderType = "bing"
 	WebSearchProviderTypeGoogle     WebSearchProviderType = "google"
@@ -176,6 +178,8 @@ type WebSearchProviderConfigFieldOption struct {
 // GetWebSearchProviderTypes returns metadata for all supported provider types.
 func GetWebSearchProviderTypes() []WebSearchProviderTypeInfo {
 	return []WebSearchProviderTypeInfo{
+		{ID: "deepseek", Name: "DeepSeek Search", RequiresAPIKey: true, SupportsProxy: true, Description: "DeepSeek standalone web search; independent of the chat model", DocsURL: "https://api-docs.deepseek.com/guides/search/"},
+		{ID: "tencent", Name: "Tencent Cloud Search (Sogou / Yuanbao)", RequiresAPIKey: true, SupportsProxy: true, Description: "腾讯云搜狗 / 元宝搜索：使用 WSA 服务 API Key，不是 SecretId/SecretKey", DocsURL: "https://cloud.tencent.com/document/product/1806/130615"},
 		{
 			ID: "brave", Name: "Brave Search", RequiresAPIKey: true, SupportsProxy: true,
 			Description: "Brave Search API (supports country and freshness filters)",

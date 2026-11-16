@@ -97,3 +97,17 @@ func TestValidateProviderParametersSerply(t *testing.T) {
 		t.Fatal("blank Serply API key was accepted")
 	}
 }
+
+func TestStandaloneSearchProviderValidation(t *testing.T) {
+	for _, kind := range []types.WebSearchProviderType{types.WebSearchProviderTypeDeepSeek, types.WebSearchProviderTypeTencent} {
+		if !isValidProviderType(kind) {
+			t.Fatalf("provider %s not registered", kind)
+		}
+		if err := validateProviderParameters(kind, types.WebSearchProviderParameters{}); err == nil {
+			t.Fatalf("%s accepted empty key", kind)
+		}
+		if err := validateProviderParameters(kind, types.WebSearchProviderParameters{APIKey: "test-key"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+}

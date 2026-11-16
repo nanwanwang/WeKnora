@@ -118,7 +118,7 @@ func (s *webSearchProviderService) DeleteProvider(ctx context.Context, tenantID 
 // isValidProviderType checks if the given provider type is supported
 func isValidProviderType(provider types.WebSearchProviderType) bool {
 	switch provider {
-	case types.WebSearchProviderTypeBrave, types.WebSearchProviderTypeBing,
+	case types.WebSearchProviderTypeDeepSeek, types.WebSearchProviderTypeTencent, types.WebSearchProviderTypeBrave, types.WebSearchProviderTypeBing,
 		types.WebSearchProviderTypeGoogle,
 		types.WebSearchProviderTypeDuckDuckGo,
 		types.WebSearchProviderTypeTavily,
@@ -140,6 +140,14 @@ func isValidProviderType(provider types.WebSearchProviderType) bool {
 // validateProviderParameters validates required parameters for each provider type
 func validateProviderParameters(provider types.WebSearchProviderType, params types.WebSearchProviderParameters) error {
 	switch provider {
+	case types.WebSearchProviderTypeDeepSeek:
+		if err := infra_web_search.ValidateDeepSeekParameters(params); err != nil {
+			return err
+		}
+	case types.WebSearchProviderTypeTencent:
+		if err := infra_web_search.ValidateTencentParameters(params); err != nil {
+			return err
+		}
 	case types.WebSearchProviderTypeBrave:
 		if strings.TrimSpace(params.APIKey) == "" {
 			return fmt.Errorf("API key is required for Brave provider")
