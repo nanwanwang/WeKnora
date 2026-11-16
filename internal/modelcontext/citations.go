@@ -160,10 +160,11 @@ func publicAttr(expression *regexp.Regexp, tag string) string {
 }
 
 var (
-	refTagRE       = regexp.MustCompile(`(?i)<ref\s+id\s*=\s*"([^"]+)"\s*/?>`)
-	refCandidateRE = regexp.MustCompile(`(?is)<ref(?:\s|$)[^>]*(?:>|$)`)
-	modelKBTagRE   = regexp.MustCompile(`(?is)<kb(?:\s|$)[^>]*(?:>|$)`)
-	modelWebTagRE  = regexp.MustCompile(`(?is)<web(?:\s|$)[^>]*(?:>|$)`)
+	refTagRE              = regexp.MustCompile(`(?i)<ref\s+id\s*=\s*"([^"]+)"\s*/?>`)
+	bracketRefCandidateRE = regexp.MustCompile(`(?is)\[ref(?:\s|$)[^>\]]*(?:>|\]|$)`)
+	refCandidateRE        = regexp.MustCompile(`(?is)<ref(?:\s|$)[^>]*(?:>|$)`)
+	modelKBTagRE          = regexp.MustCompile(`(?is)<kb(?:\s|$)[^>]*(?:>|$)`)
+	modelWebTagRE         = regexp.MustCompile(`(?is)<web(?:\s|$)[^>]*(?:>|$)`)
 )
 
 var jsonCitationTagRE = regexp.MustCompile(`(?i)^<(?:ref|kb|web)\s+[a-z_]+\s*=\s*\\"`)
@@ -209,6 +210,9 @@ func (r *sourceRegistry) ExpandText(text string) string {
 	// by the model, then create canonical tags solely from registered handles.
 	text = modelKBTagRE.ReplaceAllString(text, "")
 	text = modelWebTagRE.ReplaceAllString(text, "")
+	text = bracketRefCandidateRE.ReplaceAllStringFunc(text, func(tag string) string {
+		return rewriteBracketRefTag(r, tag)
+	})
 	return refCandidateRE.ReplaceAllStringFunc(text, func(tag string) string {
 		return rewriteRefTag(r, tag)
 	})
@@ -258,7 +262,7 @@ func (d *citationStreamExpander) Feed(chunk string) string {
 	d.pending = ""
 	var out strings.Builder
 	for data != "" {
-		idx := strings.Index(data, "<")
+		idx := strings.IndexAny(data, "<[")
 		if idx < 0 {
 			out.WriteString(data)
 			break
@@ -266,6 +270,21 @@ func (d *citationStreamExpander) Feed(chunk string) string {
 		out.WriteString(data[:idx])
 		data = data[idx:]
 		lower := strings.ToLower(data)
+		if data[0] == '[' {
+			if isBracketRefPending(lower) {
+				end := strings.IndexAny(data, ">]")
+				if end < 0 {
+					d.pending = data
+					break
+				}
+				out.WriteString(rewriteBracketRefTag(d.registry, data[:end+1]))
+				data = data[end+1:]
+				continue
+			}
+			out.WriteByte('[')
+			data = data[1:]
+			continue
+		}
 		if isSourceTagPending(lower) && !strings.Contains(data, ">") {
 			d.pending = data
 			break
@@ -328,6 +347,9 @@ func (d *citationStreamExpander) Flush() string {
 	}
 	pending := d.pending
 	d.pending = ""
+	if isBracketRefPending(strings.ToLower(pending)) {
+		return rewriteBracketRefTag(d.registry, pending)
+	}
 	if isSourceTagPending(strings.ToLower(pending)) && !keepLiteralRef(pending) {
 		return ""
 	}
@@ -387,4 +409,29 @@ func citedRefID(tag string) (string, bool) {
 		return html.UnescapeString(match[1]), true
 	}
 	return "", false
+}
+
+// Some models use a square opening bracket for the private citation protocol.
+// Consume the whole wrapper before handle expansion; never register evidence here.
+func isBracketRefPending(value string) bool {
+	const prefix = "[ref"
+	if len(value) <= len(prefix) {
+		return strings.HasPrefix(prefix, value) && value != ""
+	}
+	return strings.HasPrefix(value, prefix) && strings.ContainsRune(" \t\r\n", rune(value[len(prefix)]))
+}
+
+func rewriteBracketRefTag(r *sourceRegistry, tag string) string {
+	if len(tag) <= len("[ref") || !isBracketRefPending(strings.ToLower(tag)) {
+		return tag
+	}
+	normalized := "<" + tag[1:]
+	if strings.HasSuffix(normalized, "]") {
+		normalized = normalized[:len(normalized)-1] + ">"
+	}
+	// Keep ordinary Markdown and non-source syntax examples literal.
+	if keepLiteralRef(normalized) {
+		return tag
+	}
+	return rewriteRefTag(r, normalized)
 }
