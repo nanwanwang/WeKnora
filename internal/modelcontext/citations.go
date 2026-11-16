@@ -375,6 +375,7 @@ func rewriteRefTag(r *sourceRegistry, tag string) string {
 }
 
 var (
+	numericRefIDRE    = regexp.MustCompile(`^[0-9]+$`)
 	refIDAttrRE       = regexp.MustCompile(`(?i)\bid\s*=\s*"([^"]*)"`)
 	refIDAttrSingleRE = regexp.MustCompile(`(?i)\bid\s*=\s*'([^']*)'`)
 )
@@ -382,6 +383,14 @@ var (
 // keepLiteralRef reports a <ref> tag that is not a citation. c1/w1 are the
 // legacy spellings of chunk://1 and url://1, so they stay on the citation path.
 func keepLiteralRef(tag string) bool {
+	// Classify JSON-escaped tags after decoding as well, so the bracket
+	// normalizer and stream flush cannot mistake numeric citations for text.
+	if jsonCitationTagRE.MatchString(tag) {
+		var decoded string
+		if err := json.Unmarshal([]byte(`"`+tag+`"`), &decoded); err == nil {
+			return keepLiteralRef(decoded)
+		}
+	}
 	if !strings.HasPrefix(strings.ToLower(tag), "<ref") {
 		return false
 	}
@@ -395,7 +404,10 @@ func keepLiteralRef(tag string) bool {
 	if !ok {
 		return true
 	}
-	if id == "" || canonicalSourceHandle(id) != "" {
+	// Bare numeric IDs are ambiguous citation attempts, not literal examples.
+	// Never infer a chunk or web handle from a number: both namespaces can
+	// contain it, and only explicit current evidence may authorize a citation.
+	if id == "" || numericRefIDRE.MatchString(strings.TrimSpace(id)) || canonicalSourceHandle(id) != "" {
 		return false
 	}
 	return true
