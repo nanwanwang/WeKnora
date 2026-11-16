@@ -352,7 +352,8 @@ func (s *knowledgeBaseService) hybridSearchCandidates(ctx context.Context,
 	// Separate and fuse retrieval results.
 	vectorLists, keywordLists := classifyRetrievalResults(ctx, retrieveResults)
 	vectorResults, keywordResults := flattenLists(vectorLists), flattenLists(keywordLists)
-	if len(vectorResults) == 0 && len(keywordResults) == 0 {
+	titleResults := s.recallDocumentTitles(ctx, kbs, params)
+	if len(vectorResults) == 0 && len(keywordResults) == 0 && len(titleResults) == 0 {
 		logger.Info(ctx, "No search results found")
 		return nil, nil
 	}
@@ -384,8 +385,12 @@ func (s *knowledgeBaseService) hybridSearchCandidates(ctx context.Context,
 	// AppError from inside the iterative fan-out path (e.g. a per-group
 	// timeout surfaced as ErrVectorStoreUnavailable) must surface to the
 	// caller rather than be silently converted to a truncated chunk list.
-	return s.applyFAQPostProcessing(
+	processed, err := s.applyFAQPostProcessing(
 		ctx, kb, kbs, deduplicatedChunks, vectorLists, groups, params, matchCount)
+	if err != nil {
+		return nil, err
+	}
+	return mergeDocumentTitleRecall(processed, titleResults, params.MatchCount), nil
 }
 
 // normalizedMatchCount resolves the effective primary-match cap for a search.

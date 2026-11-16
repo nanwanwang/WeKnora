@@ -14,6 +14,10 @@ type ChunkImageInfo struct {
 
 // ChunkRepository defines the interface for chunk repository operations
 type ChunkRepository interface {
+	// SearchDocumentTitleChunks returns bounded, enabled text evidence from matching
+	// titles. Scopes must already be authorized; document and physical tag filters intersect.
+	SearchDocumentTitleChunks(ctx context.Context, scopes []types.KnowledgeSearchScope, params types.SearchParams) ([]*types.IndexWithScore, error)
+
 	// ListAllChunksByKnowledgeID includes every type and storage status for
 	// scoped lifecycle operations; UI pagination hides unindexed chunks.
 	ListAllChunksByKnowledgeID(ctx context.Context, tenantID uint64, knowledgeID string) ([]*types.Chunk, error)
