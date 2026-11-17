@@ -12,6 +12,8 @@ const evidencePresentationPrompt = `
 
 ## 本轮资料的回答与展示
 - 按问题组织答案；概述类问题先介绍概念和主要措施，再给具体例子。优先使用标题直接匹配且正文相关的资料，其他文档作为补充。特定接口、器件或电源方案的参数不可泛化为所有产品的通用要求。
+- 制度或条款核查要区分“本轮片段未检索到”和“完整制度不存在”。未完整核查相关制度时不得断言所有制度均无此条款；先简洁回答证据范围，再说明实际检索到的要求。公司通用规定与实验室专属条款应分开说明，不能据后者未提及而推断员工在实验室无需遵守通用规定。来访标识、门禁卡不等同于员工工牌，除非用户需要辨析，不必展开无关规定。
+- 不要在正文输出 weknora://doc/ 等内部地址；用文档标题和本轮 citation 模板标明来源。
 - 来源引用开启时，在关键结论后复制本轮 citation_catalog 提供的 citation 原文；每条只支持对应 source 片段。不要自行编写编号、引用标签或只在末尾笼统列出来源。可在句中自然提及实际采用的文档标题。
 - 当前资料包含与解释直接相关的原理图、结构图或流程图时，择优展示 1–2 张（citation_catalog 的 available_illustration 给出本轮可用的原图及其 source_citation，可直接复制；不要只描述“如下图”却遗漏图片），在相关说明旁用 Markdown 图片语法复制原图地址，并注明该图的来源。优先主题文档中的解释性示意图；不要为配图加入无关图片、封面、标志或水印。
 - 只能展示本轮提供的图片地址，不得猜测或修改地址，也不能将历史图片当成本轮证据。没有相关原图时正常用文字回答。用户要求纯文本或严格输出格式时遵循用户要求。
@@ -19,7 +21,7 @@ const evidencePresentationPrompt = `
 
 // Build the catalog solely from final ranked passages, after normal authorization
 // and filtering. No document lookup, expanded scope, or historical source is used.
-func buildCitationCatalog(registry *modelcontext.Registry, results []*types.SearchResult) string {
+func buildCitationCatalog(registry *modelcontext.Registry, results []*types.SearchResult, query string) string {
 	var b strings.Builder
 	seen := make(map[string]bool)
 	imageCount := 0
@@ -41,6 +43,9 @@ func buildCitationCatalog(registry *modelcontext.Registry, results []*types.Sear
 		}
 		seen[handle] = true
 		fmt.Fprintf(&b, "- source=%s document=%q citation=%s\n", handle, firstPipelineTitle(result), template)
+		if !offerIllustrations(query, result) {
+			continue
+		}
 		// Repeat the bounded illustrations beside their exact citation template.
 		// Long source bodies can otherwise bury image addresses among prose.
 		for _, match := range presentationImageRE.FindAllStringSubmatch(result.Content, -1) {
@@ -67,22 +72,8 @@ var presentationImageRE = regexp.MustCompile(`!\[([^\]\r\n]*)\]\((resource://[A-
 // Keep a small presentation reminder next to the current question, after long
 // retrieved bodies. This is sourced only from this call's citable passages.
 func buildIllustrationReminder(registry *modelcontext.Registry, results []*types.SearchResult, query string) string {
-	candidates := append([]*types.SearchResult(nil), results...)
-	normalize := func(s string) string {
-		s = strings.ToLower(strings.TrimSpace(s))
-		for _, ext := range []string{".pdf", ".docx", ".doc", ".md", ".txt"} {
-			s = strings.TrimSuffix(s, ext)
-		}
-		return strings.Join(strings.Fields(s), "")
-	}
-	for i, r := range candidates {
-		if r != nil && normalize(firstPipelineTitle(r)) == normalize(query) && presentationImageRE.MatchString(r.Content) {
-			candidates[0], candidates[i] = candidates[i], candidates[0]
-			break
-		}
-	}
-	for _, r := range candidates {
-		if r == nil {
+	for _, r := range results {
+		if !offerIllustrations(query, r) {
 			continue
 		}
 		template := registry.CitationTemplate(registry.ChunkHandle(r.ID))
@@ -99,4 +90,50 @@ func buildIllustrationReminder(registry *modelcontext.Registry, results []*types
 		}
 	}
 	return ""
+}
+
+// Clause checks need textual evidence. Keep the original retrieved passages and
+// permissions intact; omit embedded resource images only from the model view.
+func textEvidenceQuery(query string) bool {
+	q := strings.ToLower(query)
+	for _, marker := range []string{"纯文本", "不要图片", "不需要图片", "text only"} {
+		if strings.Contains(q, marker) {
+			return true
+		}
+	}
+	for _, marker := range []string{"展示图片", "显示图片", "查看图片", "原图", "截图", "配图", "show image"} {
+		if strings.Contains(q, marker) {
+			return false
+		}
+	}
+	for _, marker := range []string{"是否", "有没有", "有无", "包含", "规定", "条款", "制度"} {
+		if strings.Contains(q, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func presentationPassage(query, content string) string {
+	if !textEvidenceQuery(query) {
+		return content
+	}
+	return presentationImageRE.ReplaceAllString(content, "$1")
+}
+
+func normalizePresentationTitle(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	for _, ext := range []string{".pdf", ".docx", ".doc", ".md", ".txt"} {
+		s = strings.TrimSuffix(s, ext)
+	}
+	return strings.Join(strings.Fields(s), "")
+}
+
+// Never fall back to the first image from another document. An exact topic
+// match is a candidate, not proof of relevance; the prompt still requires a
+// directly explanatory figure and rejects decorative artwork.
+func offerIllustrations(query string, result *types.SearchResult) bool {
+	return result != nil && !textEvidenceQuery(query) &&
+		normalizePresentationTitle(query) != "" &&
+		normalizePresentationTitle(query) == normalizePresentationTitle(firstPipelineTitle(result))
 }

@@ -55,7 +55,7 @@ func prepareMessagesWithModelContext(
 			"knowledge_title":   firstPipelineTitle(result),
 			"chunk_index":       result.ChunkIndex,
 			"chunk_type":        result.ChunkType,
-			"content":           getEnrichedPassageForChat(ctx, result),
+			"content":           presentationPassage(chatManage.UserContent, getEnrichedPassageForChat(ctx, result)),
 		})
 	}
 	registry.RegisterSearchResults(knowledgeResults)
@@ -89,7 +89,7 @@ func prepareMessagesWithModelContext(
 		}))
 	}
 	modelContexts := strings.Join(contextParts, "\n")
-	if catalog := buildCitationCatalog(registry, ordered); catalog != "" {
+	if catalog := buildCitationCatalog(registry, ordered, chatManage.UserContent); catalog != "" {
 		modelContexts += "\n" + catalog
 	}
 	messages[0].Content += evidencePresentationPrompt
