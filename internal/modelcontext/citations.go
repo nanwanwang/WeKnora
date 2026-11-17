@@ -381,7 +381,7 @@ func rewriteRefTag(r *sourceRegistry, tag string) string {
 }
 
 var (
-	numericRefAttemptRE = regexp.MustCompile(`(?i)\bid\s*=\s*(?:["'\x60]+\s*)?[0-9]+(?:\s*[/,;、]\s*[0-9]+)*(?:\s*["'\x60]|\s*/?[>\]]|\s*$)`)
+	numericRefAttemptRE = regexp.MustCompile(`(?i)\bid\s*=\s*(?:["'\x60“”‘’]+\s*)?[0-9]+(?:\s*["'\x60“”‘’]|[0-9\s\p{Z}\p{P}\p{S}]*$)`)
 	nestedChunkRefRE    = regexp.MustCompile(`(?i)\bid\s*=\s*["']?\s*chunk\s*=`)
 	refIDAttrRE         = regexp.MustCompile(`(?i)\bid\s*=\s*"([^"]*)"`)
 	refIDAttrSingleRE   = regexp.MustCompile(`(?i)\bid\s*=\s*'([^']*)'`)
@@ -409,7 +409,9 @@ func keepLiteralRef(tag string) bool {
 	}
 	// Also catch unquoted, truncated and nested numeric tags observed in
 	// model streams. Do not leave them literal merely because the outer ID
-	// attribute has incomplete quotes, Markdown backticks, or another ref wrapper.
+	// attribute uses a numeric range, incomplete quotes, Markdown backticks,
+	// or another ref wrapper. Numbers mixed with punctuation are never mapped
+	// to a citation unless the whole tag matches the current protocol.
 	// A broken wrapper such as <ref id="chunk="32/> doesn't identify which
 	// namespace the number came from. Consume it without guessing a source.
 	if numericRefAttemptRE.MatchString(tag) || nestedChunkRefRE.MatchString(tag) {
