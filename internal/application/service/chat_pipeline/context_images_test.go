@@ -98,7 +98,7 @@ func TestDeduplicationKeepsTheImageWithTheCopyItKeeps(t *testing.T) {
 	const merged = "same merged text"
 	caption := &types.SearchResult{ID: "c1", Content: merged, ChunkType: string(types.ChunkTypeImageCaption)}
 	vector := &types.SearchResult{ID: "v1", Content: merged, ChunkType: string(types.ChunkTypeImageVector)}
-	out := removeDuplicateResults([]*types.SearchResult{caption, vector})
+	out := removeDuplicateResults([]*types.SearchResult{caption, vector}, false)
 	require.Len(t, out, 1)
 	assert.Equal(t, "c1", out[0].ID)
 	assert.Equal(t, "true", out[0].Metadata[types.MetadataImageVectorMatch])
@@ -155,7 +155,7 @@ func TestExpandedImageEvidenceKeepsItsOwnImageAndStorage(t *testing.T) {
 			ID: "copy", KnowledgeBaseID: "other-kb", Content: expanded[0].Content,
 			ChunkType: string(types.ChunkTypeImageCaption),
 		}, "resource://wrong")
-		deduped := removeDuplicateResults([]*types.SearchResult{caption, expanded[0]})
+		deduped := removeDuplicateResults([]*types.SearchResult{caption, expanded[0]}, false)
 		require.Len(t, deduped, 1)
 		// Stored history must retain the matched image identity too.
 		raw, err := json.Marshal(deduped)

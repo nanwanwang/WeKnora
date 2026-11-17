@@ -180,9 +180,41 @@ func getSearchResultFromHistory(chatManage *types.ChatManage) []*types.SearchRes
 	return nil
 }
 
-func removeDuplicateResults(results []*types.SearchResult) []*types.SearchResult {
+// Policy questions need separate evidence when multiple files use the same template.
+func preservePolicyDocuments(chat *types.ChatManage) bool {
+	query := strings.ToLower(chat.Query + " " + chat.RewriteQuery)
+	for _, marker := range []string{"制度", "规章", "条款", "守则", "员工手册", "管理办法", "管理规定", "policy", "policies", "regulation", "bylaw"} {
+		if strings.Contains(query, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+type dedupDocument struct {
+	libraryID  string
+	documentID string
+	chunkID    string
+}
+
+func documentForDedup(r *types.SearchResult, preserveDocuments bool) dedupDocument {
+	if !preserveDocuments || isPipelineWebReference(r) {
+		return dedupDocument{}
+	}
+	if r.KnowledgeID == "" {
+		// An unidentified passage cannot stand in for a named document.
+		return dedupDocument{chunkID: r.ID}
+	}
+	return dedupDocument{libraryID: r.KnowledgeBaseID, documentID: r.KnowledgeID}
+}
+
+func removeDuplicateResults(results []*types.SearchResult, preserveDocuments bool) []*types.SearchResult {
+	type contentKey struct {
+		document  dedupDocument
+		signature string
+	}
 	seen := make(map[string]bool)
-	contentSig := make(map[string]*types.SearchResult) // sig -> first chunk
+	contentSig := make(map[contentKey]*types.SearchResult)
 	var uniqueResults []*types.SearchResult
 	for _, r := range results {
 		// Only deduplicate by exact chunk ID — do NOT treat shared ParentChunkID
@@ -194,14 +226,15 @@ func removeDuplicateResults(results []*types.SearchResult) []*types.SearchResult
 		}
 		sig := buildContentSignature(r.Content)
 		if sig != "" {
-			if firstChunk, exists := contentSig[sig]; exists {
+			key := contentKey{document: documentForDedup(r, preserveDocuments), signature: sig}
+			if firstChunk, exists := contentSig[key]; exists {
 				logger.Debugf(context.Background(),
 					"Dedup: chunk %s removed due to content signature (dup of %s, sig prefix: %.50s...)",
 					r.ID, firstChunk.ID, sig)
 				searchutil.InheritImageEvidence(firstChunk, r)
 				continue
 			}
-			contentSig[sig] = r
+			contentSig[key] = r
 		}
 		seen[r.ID] = true
 		uniqueResults = append(uniqueResults, r)
@@ -214,8 +247,8 @@ func buildContentSignature(content string) string {
 }
 
 // removePartialOverlaps drops chunks whose content is largely contained within
-// a higher-scored chunk, even across different knowledge sources. This catches
-// cross-KB duplicates and near-duplicates that exact-signature dedup misses.
+// a higher-scored chunk. Policy review limits overlap removal to the same
+// document, so similar clauses from separate files retain their own proof.
 //
 // Two thresholds are used:
 //   - Substring containment: if the normalized short text is a literal substring
@@ -236,7 +269,7 @@ func buildContentSignature(content string) string {
 // The input slice MUST already be deduplicated by ID/signature. Within each
 // pair the chunk with the lower score is the candidate for removal; ties are
 // broken by content length (longer wins).
-func removePartialOverlaps(ctx context.Context, results []*types.SearchResult) []*types.SearchResult {
+func removePartialOverlaps(ctx context.Context, results []*types.SearchResult, preserveDocuments bool) []*types.SearchResult {
 	const (
 		overlapThreshold    = 0.85
 		maxOverlapSizeRatio = 3
@@ -252,9 +285,10 @@ func removePartialOverlaps(ctx context.Context, results []*types.SearchResult) [
 	}
 
 	type normEntry struct {
-		norm   string
-		result *types.SearchResult
-		tokens map[string]struct{} // built on first use
+		norm     string
+		result   *types.SearchResult
+		document dedupDocument
+		tokens   map[string]struct{} // built on first use
 	}
 	tokensOf := func(e *normEntry) map[string]struct{} {
 		if e.tokens == nil {
@@ -266,8 +300,9 @@ func removePartialOverlaps(ctx context.Context, results []*types.SearchResult) [
 	entries := make([]normEntry, 0, len(results))
 	for _, r := range results {
 		entries = append(entries, normEntry{
-			norm:   searchutil.NormalizeContent(r.Content),
-			result: r,
+			norm:     searchutil.NormalizeContent(r.Content),
+			result:   r,
+			document: documentForDedup(r, preserveDocuments),
 		})
 	}
 
@@ -283,6 +318,9 @@ func removePartialOverlaps(ctx context.Context, results []*types.SearchResult) [
 			}
 
 			a, b := entries[i], entries[j]
+			if a.document != b.document {
+				continue
+			}
 
 			shortIdx, longIdx := i, j
 			if len(a.norm) > len(b.norm) {

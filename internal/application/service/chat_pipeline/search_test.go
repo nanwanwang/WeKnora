@@ -45,7 +45,7 @@ func TestRemovePartialOverlapsKeepsDistinctFAQFacts(t *testing.T) {
 		got := removePartialOverlaps(context.Background(), []*types.SearchResult{
 			{ID: "faq-A-correct", Content: faqSigningRequirement, Score: 1, KnowledgeID: "product-x"},
 			{ID: "faq-B-other-requirement", Content: faqKeygenRequirement, Score: 1, KnowledgeID: "product-x"},
-		})
+		}, false)
 		assertResultIDs(t, got, "faq-A-correct", "faq-B-other-requirement")
 	})
 
@@ -53,7 +53,7 @@ func TestRemovePartialOverlapsKeepsDistinctFAQFacts(t *testing.T) {
 		got := removePartialOverlaps(context.Background(), []*types.SearchResult{
 			{ID: "faq-A-correct", Content: signing, Score: 1, KnowledgeID: "product-x"},
 			{ID: "faq-B-other-requirement", Content: keygen, Score: 1, KnowledgeID: "product-x"},
-		})
+		}, false)
 		assertResultIDs(t, got, "faq-A-correct", "faq-B-other-requirement")
 	})
 
@@ -61,7 +61,7 @@ func TestRemovePartialOverlapsKeepsDistinctFAQFacts(t *testing.T) {
 		got := removePartialOverlaps(context.Background(), []*types.SearchResult{
 			{ID: "faq-A-correct", Content: signing, Score: 1, KnowledgeID: "kb-signing"},
 			{ID: "faq-B-other-requirement", Content: keygen, Score: 1, KnowledgeID: "kb-keygen"},
-		})
+		}, false)
 		assertResultIDs(t, got, "faq-A-correct", "faq-B-other-requirement")
 	})
 }
@@ -71,7 +71,7 @@ func TestRemovePartialOverlapsCollapsesCoveredNearDuplicate(t *testing.T) {
 		got := removePartialOverlaps(context.Background(), []*types.SearchResult{
 			{ID: "two-months", Content: "borrowing lasts two months", Score: 0.8},
 			{ID: "with-renewal", Content: "borrowing lasts two months and permits one one-month renewal", Score: 0.8},
-		})
+		}, false)
 		assertResultIDs(t, got, "with-renewal")
 	})
 
@@ -81,7 +81,7 @@ func TestRemovePartialOverlapsCollapsesCoveredNearDuplicate(t *testing.T) {
 		got := removePartialOverlaps(context.Background(), []*types.SearchResult{
 			{ID: "short", Content: "renewal window two months borrowing", Score: 0.4},
 			{ID: "long", Content: "the borrowing window is two months and permits one renewal", Score: 0.9},
-		})
+		}, false)
 		assertResultIDs(t, got, "long")
 	})
 
@@ -100,7 +100,7 @@ func TestRemovePartialOverlapsCollapsesCoveredNearDuplicate(t *testing.T) {
 		got := removePartialOverlaps(context.Background(), []*types.SearchResult{
 			{ID: "short", Content: shared + " stray", Score: 0.4},
 			{ID: "long", Content: shared + " other alpha beta", Score: 0.9},
-		})
+		}, false)
 		assertResultIDs(t, got, "long")
 	})
 }
@@ -110,7 +110,7 @@ func TestRemovePartialOverlapsKeepsDistinctNumbers(t *testing.T) {
 	got := removePartialOverlaps(context.Background(), []*types.SearchResult{
 		{ID: "limit-200000", Content: base + " 200000", Score: 1, KnowledgeID: "kb-a"},
 		{ID: "limit-300000", Content: base + " 300000", Score: 1, KnowledgeID: "kb-b"},
-	})
+	}, false)
 	assertResultIDs(t, got, "limit-200000", "limit-300000")
 }
 

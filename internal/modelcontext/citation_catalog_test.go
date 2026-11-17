@@ -45,3 +45,32 @@ func TestCitationCatalogRequiresExplicitCurrentEvidence(t *testing.T) {
 	require.Empty(t, disabled.CitationTemplate(h))
 	require.Empty(t, disabled.DecodeOutputText(`<ref id="1"/>`))
 }
+
+func TestMalformedChunkRefsAreDiscardedWithoutGuessingCitations(t *testing.T) {
+	registry := NewRegistry(true)
+	chunk := registry.RegisterChunk(ChunkReference{
+		ChunkID: "current-chunk", KnowledgeBaseID: "current-kb", DocumentTitle: "Current document",
+	})
+	valid := registry.CitationTemplate(chunk)
+	canonical := `<kb doc="Current document" chunk_id="current-chunk" kb_id="current-kb" />`
+	cases := []struct{ in, want string }{
+		{`预处理 <ref id="chunk="53"/>。`, "预处理 。"},
+		{`恢复 <ref id="chunk="81/>。`, "恢复 。"},
+		{`测量 <ref id="chunk="54/>。`, "测量 。"},
+		{`避免凝露 <ref id="chunk="32/> <ref id="chunk="53/>。`, "避免凝露  。"},
+		{`<ref id="chunk="1"/>` + valid, canonical},
+		{`[ref id="chunk="12/>`, ""},
+		{`[ref id="chunk="53`, ""},
+		{`<ref id="chunk=`, ""},
+		{`<ref id="chunk="53`, ""},
+		{`{"answer":"依据 <ref id=\"chunk=\"32/>。"}`, `{"answer":"依据 。"}`},
+	}
+	for _, tc := range cases {
+		require.Equal(t, tc.want, registry.DecodeOutputText(tc.in), "%q", tc.in)
+		for split := 0; split <= len(tc.in); split++ {
+			decoder := registry.StreamDecoder()
+			got := decoder.Feed(tc.in[:split]) + decoder.Feed(tc.in[split:]) + decoder.Flush()
+			require.Equal(t, tc.want, got, "%q split at %d", tc.in, split)
+		}
+	}
+}

@@ -16,7 +16,7 @@ func TestRemovePartialOverlapsSizeGuard(t *testing.T) {
 		{ID: "a", Content: "alpha beta gamma delta epsilon zeta eta theta", Score: 0.9},
 		{ID: "b", Content: "alpha beta gamma delta epsilon zeta eta theta iota", Score: 0.5},
 	}
-	if got := removePartialOverlaps(context.Background(), near); len(got) != 1 || got[0].ID != "a" {
+	if got := removePartialOverlaps(context.Background(), near, false); len(got) != 1 || got[0].ID != "a" {
 		t.Fatalf("near-duplicates not collapsed: %+v", got)
 	}
 
@@ -30,7 +30,7 @@ func TestRemovePartialOverlapsSizeGuard(t *testing.T) {
 		{ID: "page", Content: page.String() + " word1 word2 word3 word4 word5 word6 word7 word8 word9 word10" +
 			" word11 word12 word13 word14 word15 word16 word17 word18 word19 word20", Score: 0.9},
 	}
-	if got := removePartialOverlaps(context.Background(), mixed); len(got) != 2 {
+	if got := removePartialOverlaps(context.Background(), mixed, false); len(got) != 2 {
 		t.Fatalf("short chunk dropped against a much longer text: %+v", got)
 	}
 }

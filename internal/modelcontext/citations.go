@@ -27,7 +27,7 @@ Retrieved content uses request-local source handles: chunk://N identifies a know
 const citationEnabledProtocolPrompt = `
 - Source citations are enabled for this answer. Cite a knowledge chunk with exactly <ref id="chunk://N"/> and a
   web page with exactly <ref id="url://N"/>.
-- A current citation_catalog may also supply exact numeric <ref/> templates. Use those numbers only when explicitly supplied there; never infer a number from a source handle or a historical answer.
+- A current citation_catalog may also supply exact numeric <ref/> templates. Copy those templates verbatim. Neither a passage's index attribute nor a number from a historical answer is a citation ID.
 - Cite only chunk://N and url://N handles backed by tool results for the current task, and only when that source
   supports the adjacent claim. Never cite doc://N or kb://N.
 - Each chunk://N covers only its own supplied text or image evidence, not every chunk of the same document.
@@ -382,6 +382,7 @@ func rewriteRefTag(r *sourceRegistry, tag string) string {
 
 var (
 	numericRefAttemptRE = regexp.MustCompile(`(?i)\bid\s*=\s*(?:["']\s*[0-9]+(?:\s*[/,;、]\s*[0-9]+)*(?:\s*["']|\s*/?[>\]]|\s*$)|[0-9]+(?:\s*[/,;、]\s*[0-9]+)*(?:\s*/?[>\]]|\s*$))`)
+	nestedChunkRefRE    = regexp.MustCompile(`(?i)\bid\s*=\s*["']?\s*chunk\s*=`)
 	refIDAttrRE         = regexp.MustCompile(`(?i)\bid\s*=\s*"([^"]*)"`)
 	refIDAttrSingleRE   = regexp.MustCompile(`(?i)\bid\s*=\s*'([^']*)'`)
 )
@@ -409,7 +410,9 @@ func keepLiteralRef(tag string) bool {
 	// Also catch unquoted, truncated and nested numeric tags observed in
 	// model streams. Do not leave them literal merely because the outer ID
 	// attribute is incomplete or contains another ref wrapper.
-	if numericRefAttemptRE.MatchString(tag) {
+	// A broken wrapper such as <ref id="chunk="32/> doesn't identify which
+	// namespace the number came from. Consume it without guessing a source.
+	if numericRefAttemptRE.MatchString(tag) || nestedChunkRefRE.MatchString(tag) {
 		return false
 	}
 	id, ok := citedRefID(tag)

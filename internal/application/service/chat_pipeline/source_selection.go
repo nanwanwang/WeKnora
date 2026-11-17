@@ -8,6 +8,9 @@ import (
 )
 
 func diversifyTopicDocuments(chat *types.ChatManage) bool {
+	if preservePolicyDocuments(chat) {
+		return true
+	}
 	if !searchutil.IsBroadTopicQuery(chat.RewriteQuery) {
 		return false
 	}

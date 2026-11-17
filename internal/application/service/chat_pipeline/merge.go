@@ -56,10 +56,13 @@ func (p *PluginMerge) OnEvent(ctx context.Context,
 	searchResult := p.selectInputResults(ctx, chatManage)
 
 	// Step 2: Initial dedup
-	searchResult = p.dedup(ctx, "dedup_summary", searchResult)
+	preserveDocuments := preservePolicyDocuments(chatManage)
+	searchResult = p.dedup(ctx, "dedup_summary", searchResult, preserveDocuments)
 
-	// Step 3: Inject history references
-	searchResult = p.injectHistoryResults(ctx, chatManage, searchResult)
+	// Step 3: Policy citations must come from this turn's scoped retrieval.
+	if !preserveDocuments {
+		searchResult = p.injectHistoryResults(ctx, chatManage, searchResult)
+	}
 
 	pipelineInfo(ctx, "Merge", "candidate_ready", map[string]interface{}{
 		"chunk_cnt": len(searchResult),
@@ -89,8 +92,8 @@ func (p *PluginMerge) OnEvent(ctx context.Context,
 	mergedChunks = p.groupAndMergeCurrentContent(ctx, mergedChunks)
 
 	// Step 8: Final dedup — catches exact duplicates plus partial content overlaps
-	mergedChunks = p.dedup(ctx, "final_dedup", mergedChunks)
-	mergedChunks = removePartialOverlaps(ctx, mergedChunks)
+	mergedChunks = p.dedup(ctx, "final_dedup", mergedChunks, preserveDocuments)
+	mergedChunks = removePartialOverlaps(ctx, mergedChunks, preserveDocuments)
 
 	p.attachCitationSources(ctx, mergedChunks)
 	chatManage.MergeResult = mergedChunks
@@ -143,9 +146,9 @@ func (p *PluginMerge) selectInputResults(ctx context.Context, chatManage *types.
 }
 
 // dedup wraps removeDuplicateResults with before/after logging.
-func (p *PluginMerge) dedup(ctx context.Context, label string, results []*types.SearchResult) []*types.SearchResult {
+func (p *PluginMerge) dedup(ctx context.Context, label string, results []*types.SearchResult, preserveDocuments bool) []*types.SearchResult {
 	before := len(results)
-	out := removeDuplicateResults(results)
+	out := removeDuplicateResults(results, preserveDocuments)
 	if len(out) < before {
 		pipelineInfo(ctx, "Merge", label, map[string]interface{}{
 			"before": before,
@@ -171,7 +174,7 @@ func (p *PluginMerge) injectHistoryResults(
 		"history_hits": len(historyResults),
 	})
 	combined := append(current, historyResults...)
-	return removeDuplicateResults(combined)
+	return removeDuplicateResults(combined, false)
 }
 
 // groupAndMergeCurrentContent groups chunks by KnowledgeID + ChunkType, then joins

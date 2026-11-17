@@ -168,7 +168,7 @@ func (p *PluginSearchEntity) OnEvent(ctx context.Context,
 	searchutil.EnrichSearchResultsImageInfoOnly(ctx, p.chunkRepo, entityResults)
 	chatManage.SearchResult = append(chatManage.SearchResult, entityResults...)
 	// remove duplicate results
-	chatManage.SearchResult = removeDuplicateResults(chatManage.SearchResult)
+	chatManage.SearchResult = removeDuplicateResults(chatManage.SearchResult, preservePolicyDocuments(chatManage))
 	if len(chatManage.SearchResult) == 0 {
 		logger.Infof(ctx, "No new search result, session_id: %s", chatManage.SessionID)
 		return ErrSearchNothing
