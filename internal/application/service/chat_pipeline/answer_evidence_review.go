@@ -14,9 +14,11 @@ var explicitFormatRE = regexp.MustCompile(`(?i)\b(?:json|yaml|csv|tsv|xml)\b`)
 
 type reviewSource struct {
 	document string
+	title    string
 	body     string
 	header   string
 	ref      string
+	imageOCR bool
 }
 
 type answerEvidenceReview struct {
@@ -39,12 +41,16 @@ func reviewAnswerEvidence(request *types.ChatManage, registry *modelcontext.Regi
 	var sources []reviewSource
 	for _, r := range expandCitationSources(orderedPipelineReferences(request)) {
 		if r == nil || r.KnowledgeBaseID == "" || r.KnowledgeID == "" ||
-			r.ChunkType != string(types.ChunkTypeText) || len(r.Content) > 32<<10 || registry.ChunkHandle(r.ID) == "" {
+			len(r.Content) > 32<<10 || registry.ChunkHandle(r.ID) == "" {
+			continue
+		}
+		ocr := r.ChunkType == string(types.ChunkTypeImageOCR)
+		if !ocr && r.ChunkType != string(types.ChunkTypeText) {
 			continue
 		}
 		sources = append(sources, reviewSource{
-			document: r.KnowledgeBaseID + "/" + r.KnowledgeID, body: r.Content, header: r.ContextHeader,
-			ref: registry.CitationTemplate(registry.ChunkHandle(r.ID)),
+			document: r.KnowledgeBaseID + "/" + r.KnowledgeID, title: r.KnowledgeTitle, body: r.Content, header: r.ContextHeader,
+			ref: registry.CitationTemplate(registry.ChunkHandle(r.ID)), imageOCR: ocr,
 		})
 	}
 	han := hasHan(query)
@@ -54,6 +60,9 @@ func reviewAnswerEvidence(request *types.ChatManage, registry *modelcontext.Regi
 		return review
 	}
 	for _, source := range sources {
+		if source.imageOCR {
+			continue
+		}
 		citation := registry.DecodeOutputText(source.ref)
 		if citation == "" {
 			continue

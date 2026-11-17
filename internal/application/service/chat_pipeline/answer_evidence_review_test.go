@@ -68,6 +68,62 @@ func TestEvidenceReviewFindsDifferentInclusivityWithinADocument(t *testing.T) {
 	require.Empty(t, findEvidenceDifference("流量等于7.3 L时使用哪个流程？", []reviewSource{one, two}).excerpts)
 }
 
+func TestEvidenceReviewChecksTableBoundaryAgainstCitedFigureOCR(t *testing.T) {
+	table := &types.SearchResult{
+		ID: "table", KnowledgeID: "guide", KnowledgeBaseID: "lab", KnowledgeTitle: "测试指南",
+		ChunkType: string(types.ChunkTypeText),
+		Content:   `<table><tr><td rowspan="2">进液压力 3 bar~9 bar</td><td>流量 &lt;7.3 L</td><td>流程甲</td></tr><tr><td>流量 ≥7.3 L</td><td>流程乙</td></tr></table>`,
+	}
+	figure := &types.SearchResult{
+		ID: "figure", KnowledgeID: table.KnowledgeID, KnowledgeBaseID: table.KnowledgeBaseID,
+		KnowledgeTitle: table.KnowledgeTitle, ChunkType: string(types.ChunkTypeImageOCR),
+		Content: "进液压力 3 bar~9 bar\n当流量 ≤7.3 L 时进流程甲\n当流量 ≥7.3 L 时进流程乙",
+	}
+	manage := &types.ChatManage{
+		PipelineRequest: types.PipelineRequest{Query: "进液压力在 3 到 9 bar，流量正好7.30 L时应走哪个流程？"},
+		PipelineState:   types.PipelineState{MergeResult: []*types.SearchResult{table, figure}},
+	}
+	registry := modelcontext.NewRegistry(true)
+	registry.RegisterSearchResults([]*types.SearchResult{table})
+	require.Empty(t, reviewAnswerEvidence(manage, registry).pending, "ignore a figure without a registered citation")
+	registry.RegisterSearchResults(manage.MergeResult)
+	answer := html.UnescapeString(reviewAnswerEvidence(manage, registry).pending)
+	require.Contains(t, answer, "请核对原图")
+	require.Contains(t, answer, "流量 <7.3 L")
+	require.Contains(t, answer, "当流量 ≤7.3 L")
+	for _, src := range manage.MergeResult {
+		require.Contains(t, answer, registry.CitationTemplate(registry.ChunkHandle(src.ID)))
+	}
+	query := manage.Query
+	manage.Query = "进液压力在 1 bar 到 2 bar，流量正好7.30 L时应走哪个流程？"
+	require.Empty(t, reviewAnswerEvidence(manage, registry).pending, "unrelated table group")
+	manage.Query = "进液压力 1 到 3 bar，排液压力 5 到 9 bar，流量正好7.30 L时应走哪个流程？"
+	require.Empty(t, reviewAnswerEvidence(manage, registry).pending, "do not join endpoints across ranges")
+	manage.Query = query
+	original := figure.Content
+	figure.Content = strings.Replace(figure.Content, "3 bar~9 bar", "1 bar~2 bar", 1)
+	require.Empty(t, reviewAnswerEvidence(manage, registry).pending, "unrelated figure condition")
+	figure.Content = original
+	figure.KnowledgeID = "different guide"
+	figure.KnowledgeTitle = "另一份指南.pdf"
+	require.Empty(t, reviewAnswerEvidence(manage, registry).pending, "do not pair unrelated files")
+	figure.KnowledgeTitle = "测试指南(2).pdf"
+	answer = html.UnescapeString(reviewAnswerEvidence(manage, registry).pending)
+	require.Contains(t, answer, "两份资料")
+	require.Contains(t, answer, registry.CitationTemplate(registry.ChunkHandle(table.ID)))
+	require.Contains(t, answer, registry.CitationTemplate(registry.ChunkHandle(figure.ID)))
+	figure.Content = strings.Split(figure.Content, "\n当流量 ≥")[0]
+	require.Empty(t, reviewAnswerEvidence(manage, registry).pending, "a single recognized comparison does not span files")
+	figure.Content = original
+	figure.KnowledgeBaseID = "different lab"
+	require.Empty(t, reviewAnswerEvidence(manage, registry).pending, "do not pair files across libraries")
+	figure.KnowledgeBaseID = table.KnowledgeBaseID
+	figure.KnowledgeID = table.KnowledgeID
+	manage.MergeResult = []*types.SearchResult{figure}
+	figure.Content += "\n另一处 OCR 给出流量 <7.3 L 时进流程甲"
+	require.Empty(t, reviewAnswerEvidence(manage, registry).pending, "OCR alone is insufficient")
+}
+
 func TestEvidenceReviewKeepsNamedLimitsFromTheSameField(t *testing.T) {
 	row := reviewSource{document: "manual", body: "压环 44N 以上编号 DK/R9/N。STD12-DK/R9/N 为大号压环，最小载荷为 44N。后附说明 DK/R9/N 为大号压环，最小载荷要求为 29N。", ref: "<ref id=\"4\"/>"}
 	production := reviewSource{document: "manual", body: "生产注记约定大号压环，载荷为44N以\n上。", ref: "<ref id=\"5\"/>"}
