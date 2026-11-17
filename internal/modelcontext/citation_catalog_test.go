@@ -29,6 +29,10 @@ func TestCitationCatalogRequiresExplicitCurrentEvidence(t *testing.T) {
 		{`<ref id="18/3/>`, ""},
 		{`[ref id="1,2"/>`, ""},
 		{`<ref id="1/2`, ""},
+		{"[ref id=\"76``/>", ""},
+		{"[ref id=\"1``/>", ""},
+		{"<ref id=\"1`/>", ""},
+		{"[ref id=\"76``", ""},
 	}
 	for _, tc := range cases {
 		require.Equal(t, tc.want, r.DecodeOutputText(tc.in))
