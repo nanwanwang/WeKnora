@@ -62,6 +62,13 @@ func (p *PluginChatCompletionStream) OnEvent(ctx context.Context,
 		"chat_model":     chatManage.ChatModelID,
 	})
 
+	if chatManage.EventBus != nil {
+		if answer, ok := verifiedEvidenceReply(chatManage); ok {
+			go emitVerifiedEvidenceReply(ctx, chatManage, answer)
+			return next()
+		}
+	}
+
 	// Prepare chat model and options
 	chatModel, opt, err := prepareChatModel(ctx, p.modelService, chatManage)
 	if err != nil {
@@ -325,4 +332,22 @@ func (p *PluginChatCompletionStream) OnEvent(ctx context.Context,
 	}()
 
 	return next()
+}
+
+func emitVerifiedEvidenceReply(ctx context.Context, chatManage *types.ChatManage, answer string) {
+	id := fmt.Sprintf("%s-answer", uuid.New().String()[:8])
+	for _, data := range []event.AgentFinalAnswerData{{Content: answer}, {Done: true}} {
+		if ctx.Err() != nil {
+			return
+		}
+		err := chatManage.EventBus.Emit(ctx, types.Event{
+			ID:        id,
+			Type:      types.EventType(event.EventAgentFinalAnswer),
+			SessionID: chatManage.SessionID,
+			Data:      data,
+		})
+		if err != nil {
+			return
+		}
+	}
 }

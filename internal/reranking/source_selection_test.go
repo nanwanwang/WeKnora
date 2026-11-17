@@ -74,3 +74,20 @@ func TestExactTopicKeepsBodyAndIllustrationInsteadOfContents(t *testing.T) {
 	indices = SelectBalanced(context.Background(), rows, 1, "EMC设计", true)
 	require.Equal(t, "body", rows[indices[0]].ID)
 }
+
+func TestProductInspectionQuestionsPrioritizeAnEligibleMatchingBody(t *testing.T) {
+	rows := []*types.SearchResult{
+		{ID: "plastic", KnowledgeTitle: "塑壳产品检验规范.pdf", Content: "外观检验的距离及照明条件", Score: 0.94},
+		{ID: "cast-toc", KnowledgeTitle: "压铸产品检验规范.pdf", Content: "目录\n总则....1\n外观检验....4\n包装....6", Score: 0.91},
+		{ID: "cast", KnowledgeTitle: "压铸产品检验规范.pdf", Content: "检视距离400–600mm，自然光或300–600lx", Score: 0.88},
+	}
+	ctx := context.Background()
+	for _, q := range []string{
+		"压铸产品外观检验的检视距离和照明条件是什么？",
+		"根据《压铸产品检验规范》，压铸产品外观检验的检视距离是多少？",
+	} {
+		require.Equal(t, []int{2}, SelectBalanced(ctx, rows, 1, q, false), q)
+		require.Equal(t, []int{0}, SelectBalanced(ctx, rows[:2], 1, q, false), q)
+	}
+	require.Equal(t, []int{0}, SelectBalanced(ctx, rows, 1, "比较《压铸产品检验规范》和《塑壳产品检验规范》的照明条件", false))
+}

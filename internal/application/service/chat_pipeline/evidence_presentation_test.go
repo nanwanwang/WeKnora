@@ -70,3 +70,23 @@ func TestExplicitPictureRequestKeepsSourceImage(t *testing.T) {
 	require.Equal(t, content, presentationPassage("请展示制度原图", content))
 	require.NotContains(t, presentationPassage("不要图片，纯文本说明制度", content), "resource://")
 }
+
+func TestTableHeadersReachTheModelUnderTheOriginalCitation(t *testing.T) {
+	query := "塑壳产品浅划痕的长度和数量上限是什么？"
+	row := "<tr><td>A级面</td><td>L≤10mm，n≤2pcs，DS≥100mm</td></tr>"
+	result := &types.SearchResult{
+		ID: "table-row", KnowledgeID: "inspection", KnowledgeBaseID: "allowed-kb",
+		KnowledgeTitle: "塑壳产品检验规范.pdf", Content: row,
+		ContextHeader: "原表列标题（从左到右）：\n外观等级 | 允收标准",
+	}
+	manage := &types.ChatManage{
+		PipelineRequest: types.PipelineRequest{Query: query},
+		PipelineState:   types.PipelineState{UserContent: query, MergeResult: []*types.SearchResult{result}},
+	}
+	messages, registry := prepareMessagesWithModelContext(context.Background(), manage)
+	require.Contains(t, messages[1].Content, "外观等级 | 允收标准")
+	require.Contains(t, messages[1].Content, "DS≥100mm")
+	require.Equal(t, row, result.Content)
+	require.Contains(t, registry.DecodeOutputText("<ref id=\"1\"/>"), "chunk_id=\"table-row\"")
+	require.Empty(t, registry.DecodeOutputText("<ref id=\"2\"/>"))
+}

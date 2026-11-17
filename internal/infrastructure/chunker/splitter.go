@@ -130,6 +130,7 @@ var protectedPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`\[[^\]\n]{1,200}\]\([^)\n]{1,500}\)`),
 	regexp.MustCompile("(?m)[ ]*(?:\\|[^|\\n]*)+\\|[\\r\\n]+\\s*(?:\\|\\s*:?-{3,}:?\\s*)+\\|[\\r\\n]+"), // Table header+separator
 	regexp.MustCompile("(?m)[ ]*(?:\\|[^|\\n]*)+\\|[\\r\\n]+"),                                          // Table rows
+	regexp.MustCompile("(?im)^[ \t]*<tr\\b[^\\r\\n]*?</tr[ \t]*>[ \t]*(?:\\r?\\n)?"),                    // Normalized HTML table rows
 	regexp.MustCompile("(?s)```(?:\\w+)?[\\r\\n].*?```"),                                                // Fenced code blocks
 	regexp.MustCompile("`[^`\\r\\n]+`"),                                                                 // Markdown inline code
 }

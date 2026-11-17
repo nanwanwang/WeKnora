@@ -109,6 +109,7 @@ func (p *PluginRerank) OnEvent(ctx context.Context,
 	opts := reranking.Options{
 		BalanceSources:     true,
 		DiversifyDocuments: diversifyTopicDocuments(chatManage),
+		SourceQuery:        sourcePreferenceQuery(chatManage),
 		Threshold:          chatManage.RerankThreshold,
 		TopK:               max(1, chatManage.RerankTopK),
 		MaxCandidates:      max(reranking.DefaultMaxCandidates, chatManage.RerankTopK),

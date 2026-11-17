@@ -46,6 +46,7 @@ func SelectBalanced(ctx context.Context, results []*types.SearchResult, k int, q
 	}
 	kbCount := min(len(internal), k-webCount)
 	webCount = min(len(web), k-kbCount)
+	titleHint, topic := searchutil.DocumentTitleHint(query)
 	choose := func(indices []int, count int, knowledge bool) []int {
 		var picks []int
 		selected := map[int]bool{}
@@ -64,18 +65,19 @@ func SelectBalanced(ctx context.Context, results []*types.SearchResult, k int, q
 				docs[key(i)] = true
 			}
 		}
-		if knowledge && searchutil.IsTopicQuery(query) {
+		if knowledge && titleHint != "" {
 			exact := -1
 			for _, i := range indices {
-				if searchutil.NormalizeDocumentTitle(results[i].KnowledgeTitle) != searchutil.NormalizeDocumentTitle(query) {
+				row := results[i]
+				if searchutil.NormalizeDocumentTitle(row.KnowledgeTitle) != titleHint || strings.TrimSpace(row.Content) == "" {
 					continue
 				}
-				if exact < 0 {
+				if topic && exact < 0 {
 					exact = i
 				}
 				// A table of contents locates passages but does not explain
 				// the topic. Prefer eligible body evidence of that document.
-				if !isContentsOnlyPassage(results[i].Content) {
+				if !isContentsOnlyPassage(row.Content) {
 					exact = i
 					break
 				}
@@ -85,7 +87,7 @@ func SelectBalanced(ctx context.Context, results []*types.SearchResult, k int, q
 				// At most one additional illustrated passage of this exact
 				// topic document; leave the remaining slots for other sources.
 				// Every candidate has already passed the ordinary thresholds.
-				if diversify && count >= 3 && !hasPassageImage(results[exact].Content) {
+				if topic && diversify && count >= 3 && !hasPassageImage(results[exact].Content) {
 					for _, i := range indices {
 						if key(i) == key(exact) && hasPassageImage(results[i].Content) && !isContentsOnlyPassage(results[i].Content) {
 							add(i)

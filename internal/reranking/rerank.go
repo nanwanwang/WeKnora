@@ -62,6 +62,9 @@ type Options struct {
 	// DiversifyDocuments applies only to broad, non-document-scoped topic queries.
 	BalanceSources     bool
 	DiversifyDocuments bool
+	// SourceQuery preserves source names from the question when scoring uses
+	// a rewritten retrieval query. An empty value uses the scoring query.
+	SourceQuery string
 	// FallbackMinScore is the score the best candidate needs to be kept when
 	// nothing passes the threshold. See FallbackMinScore().
 	FallbackMinScore float64
@@ -214,7 +217,11 @@ func Rerank(
 	}
 	if opts.TopK > 0 {
 		if opts.BalanceSources {
-			picks = SelectBalanced(ctx, res.Scored, opts.TopK, query, opts.DiversifyDocuments)
+			sourceQuery := opts.SourceQuery
+			if sourceQuery == "" {
+				sourceQuery = query
+			}
+			picks = SelectBalanced(ctx, res.Scored, opts.TopK, sourceQuery, opts.DiversifyDocuments)
 		} else {
 			picks = SelectMMR(ctx, res.Scored, min(opts.TopK, len(res.Scored)), DefaultMMRLambda)
 		}

@@ -48,6 +48,10 @@ func prepareMessagesWithModelContext(
 			continue
 		}
 		knowledgeResults = append(knowledgeResults, result)
+		passage := getEnrichedPassageForChat(ctx, result)
+		if result.ContextHeader != "" && strings.TrimSpace(passage) != "" {
+			passage = result.ContextHeader + "\n\n" + passage
+		}
 		knowledgeRows = append(knowledgeRows, map[string]interface{}{
 			"chunk_id":          result.ID,
 			"knowledge_id":      result.KnowledgeID,
@@ -55,7 +59,7 @@ func prepareMessagesWithModelContext(
 			"knowledge_title":   firstPipelineTitle(result),
 			"chunk_index":       result.ChunkIndex,
 			"chunk_type":        result.ChunkType,
-			"content":           presentationPassage(chatManage.UserContent, getEnrichedPassageForChat(ctx, result)),
+			"content":           presentationPassage(chatManage.UserContent, passage),
 		})
 	}
 	registry.RegisterSearchResults(knowledgeResults)

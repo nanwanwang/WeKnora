@@ -2,10 +2,20 @@ package chatpipeline
 
 import (
 	"context"
+	"strings"
+
 	"github.com/Tencent/WeKnora/internal/reranking"
 	"github.com/Tencent/WeKnora/internal/searchutil"
 	"github.com/Tencent/WeKnora/internal/types"
 )
+
+func sourcePreferenceQuery(chat *types.ChatManage) string {
+	title, topic := searchutil.DocumentTitleHint(chat.UserContent)
+	if strings.ContainsAny(chat.UserContent, "《》") || (title != "" && !topic) {
+		return chat.UserContent
+	}
+	return chat.RewriteQuery
+}
 
 func diversifyTopicDocuments(chat *types.ChatManage) bool {
 	if preservePolicyDocuments(chat) {
@@ -36,7 +46,7 @@ func selectChatSources(ctx context.Context, results []*types.SearchResult, k int
 			ranked = append(ranked, r)
 		}
 	}
-	selected := reranking.SelectBalanced(ctx, ranked, k, chat.RewriteQuery, diversifyTopicDocuments(chat))
+	selected := reranking.SelectBalanced(ctx, ranked, k, sourcePreferenceQuery(chat), diversifyTopicDocuments(chat))
 	out := make([]*types.SearchResult, 0, len(selected)+len(kept))
 	for _, i := range selected {
 		out = append(out, ranked[i])

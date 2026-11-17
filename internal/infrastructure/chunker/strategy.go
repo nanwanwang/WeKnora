@@ -32,6 +32,12 @@ const (
 // SplitWithDiagnostics performs (matters in SplitParentChild where
 // Split is called once per parent).
 func Split(text string, cfg SplitterConfig) []Chunk {
+	chunks := splitDocument(text, cfg)
+	attachHTMLTableContexts(chunks, findHTMLTableContexts(text), tokenRuneBudget(cfg))
+	return chunks
+}
+
+func splitDocument(text string, cfg SplitterConfig) []Chunk {
 	if text == "" {
 		return nil
 	}
@@ -90,6 +96,12 @@ type Diagnostics struct {
 // profile when available). Use this for the chunker preview endpoint
 // where the caller wants to know which tier won and why others lost.
 func SplitWithDiagnostics(text string, cfg SplitterConfig) ([]Chunk, *Diagnostics) {
+	chunks, diag := splitDocumentWithDiagnostics(text, cfg)
+	attachHTMLTableContexts(chunks, findHTMLTableContexts(text), tokenRuneBudget(cfg))
+	return chunks, diag
+}
+
+func splitDocumentWithDiagnostics(text string, cfg SplitterConfig) ([]Chunk, *Diagnostics) {
 	// Default selected tier to legacy so an empty diag never carries the
 	// zero string — that would render as a blank tag in the debug UI.
 	diag := &Diagnostics{SelectedTier: TierLegacy}
@@ -162,9 +174,9 @@ func splitParentChild(text string, parentCfg, childCfg SplitterConfig, withDiagn
 		diag    *Diagnostics
 	)
 	if withDiagnostics {
-		parents, diag = SplitWithDiagnostics(text, parentCfg)
+		parents, diag = splitDocumentWithDiagnostics(text, parentCfg)
 	} else {
-		parents = Split(text, parentCfg)
+		parents = splitDocument(text, parentCfg)
 	}
 	if len(parents) == 0 {
 		return ParentChildResult{}, diag
@@ -174,14 +186,16 @@ func splitParentChild(text string, parentCfg, childCfg SplitterConfig, withDiagn
 	var children []ChildChunk
 	childSeq := 0
 	budget := tokenRuneBudget(childCfg)
+	tableContexts := findHTMLTableContexts(text)
 	for _, parent := range parents {
-		subs := mapChildrenToSource(parent, Split(parent.Content, childCfg))
+		subs := mapChildrenToSource(parent, splitDocument(parent.Content, childCfg))
 		for i := range subs {
 			subs[i].ContextHeader = mergeBreadcrumbs(parent.ContextHeader, subs[i].ContextHeader)
 		}
 		if budget > 0 {
 			subs = enforceChunkBudget(subs, budget)
 		}
+		attachHTMLTableContexts(subs, tableContexts, budget)
 
 		parentIndex := -1
 		if len(subs) > 1 || (len(subs) == 1 && subs[0].Content != parent.Content) {
@@ -194,6 +208,7 @@ func splitParentChild(text string, parentCfg, childCfg SplitterConfig, withDiagn
 			childSeq++
 		}
 	}
+	attachHTMLTableContexts(newParents, tableContexts, tokenRuneBudget(parentCfg))
 	return ParentChildResult{Parents: newParents, Children: children}, diag
 }
 
