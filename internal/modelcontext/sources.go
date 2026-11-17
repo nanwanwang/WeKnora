@@ -37,6 +37,7 @@ type webMeta struct {
 // round). Handles are never persisted or accepted across requests.
 type sourceRegistry struct {
 	citationsEnabled bool
+	citationAliases  *handleTable[struct{}] // numeric aliases explicitly issued for current evidence only
 	// Addressable IDs from history, directory entries, and tool arguments are
 	// not evidence until a current tool result supplies the source.
 	citable sync.Map // handle -> true; registrations may run concurrently
@@ -54,6 +55,7 @@ func newSourceRegistry(citationsEnabled ...bool) *sourceRegistry {
 	}
 	return &sourceRegistry{
 		citationsEnabled: enabled,
+		citationAliases:  newHandleTable[struct{}]("", 0, 1),
 		chunks:           newHandleTable[ChunkReference](chunkHandlePrefix, 0, 1),
 		docs:             newHandleTable[struct{}](docHandlePrefix, 0, 1),
 		kbs:              newHandleTable[struct{}](kbHandlePrefix, 0, 1),

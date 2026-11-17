@@ -27,6 +27,7 @@ Retrieved content uses request-local source handles: chunk://N identifies a know
 const citationEnabledProtocolPrompt = `
 - Source citations are enabled for this answer. Cite a knowledge chunk with exactly <ref id="chunk://N"/> and a
   web page with exactly <ref id="url://N"/>.
+- A current citation_catalog may also supply exact numeric <ref/> templates. Use those numbers only when explicitly supplied there; never infer a number from a source handle or a historical answer.
 - Cite only chunk://N and url://N handles backed by tool results for the current task, and only when that source
   supports the adjacent claim. Never cite doc://N or kb://N.
 - Each chunk://N covers only its own supplied text or image evidence, not every chunk of the same document.
@@ -224,6 +225,11 @@ func (r *sourceRegistry) citationTag(handle string) string {
 	if r == nil || !r.citationsEnabled {
 		return ""
 	}
+	if r.citationAliases != nil {
+		if source, _, ok := r.citationAliases.resolve(strings.TrimSpace(handle)); ok {
+			handle = source
+		}
+	}
 	handle = canonicalSourceHandle(handle)
 	if _, citable := r.citable.Load(handle); !citable {
 		return ""
@@ -375,7 +381,7 @@ func rewriteRefTag(r *sourceRegistry, tag string) string {
 }
 
 var (
-	numericRefAttemptRE = regexp.MustCompile(`(?i)\bid\s*=\s*(?:["']\s*[0-9]+(?:\s*["']|\s*/?[>\]]|\s*$)|[0-9]+(?:\s*/?[>\]]|\s*$))`)
+	numericRefAttemptRE = regexp.MustCompile(`(?i)\bid\s*=\s*(?:["']\s*[0-9]+(?:\s*[/,;、]\s*[0-9]+)*(?:\s*["']|\s*/?[>\]]|\s*$)|[0-9]+(?:\s*[/,;、]\s*[0-9]+)*(?:\s*/?[>\]]|\s*$))`)
 	refIDAttrRE         = regexp.MustCompile(`(?i)\bid\s*=\s*"([^"]*)"`)
 	refIDAttrSingleRE   = regexp.MustCompile(`(?i)\bid\s*=\s*'([^']*)'`)
 )

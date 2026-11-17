@@ -4,7 +4,9 @@ import (
 	"context"
 	"github.com/Tencent/WeKnora/internal/searchutil"
 	"github.com/Tencent/WeKnora/internal/types"
+	"regexp"
 	"sort"
+	"strings"
 )
 
 // SelectBalanced only selects among supplied eligible results. It never changes
@@ -63,10 +65,33 @@ func SelectBalanced(ctx context.Context, results []*types.SearchResult, k int, q
 			}
 		}
 		if knowledge && searchutil.IsTopicQuery(query) {
+			exact := -1
 			for _, i := range indices {
-				if searchutil.NormalizeDocumentTitle(results[i].KnowledgeTitle) == searchutil.NormalizeDocumentTitle(query) {
-					add(i)
+				if searchutil.NormalizeDocumentTitle(results[i].KnowledgeTitle) != searchutil.NormalizeDocumentTitle(query) {
+					continue
+				}
+				if exact < 0 {
+					exact = i
+				}
+				// A table of contents locates passages but does not explain
+				// the topic. Prefer eligible body evidence of that document.
+				if !isContentsOnlyPassage(results[i].Content) {
+					exact = i
 					break
+				}
+			}
+			if exact >= 0 {
+				add(exact)
+				// At most one additional illustrated passage of this exact
+				// topic document; leave the remaining slots for other sources.
+				// Every candidate has already passed the ordinary thresholds.
+				if diversify && count >= 3 && !hasPassageImage(results[exact].Content) {
+					for _, i := range indices {
+						if key(i) == key(exact) && hasPassageImage(results[i].Content) && !isContentsOnlyPassage(results[i].Content) {
+							add(i)
+							break
+						}
+					}
 				}
 			}
 		}
@@ -99,4 +124,14 @@ func SelectBalanced(ctx context.Context, results []*types.SearchResult, k int, q
 	picks := choose(internal, kbCount, true)
 	picks = append(picks, choose(web, webCount, false)...)
 	return picks
+}
+
+var contentsEntryRE = regexp.MustCompile(`(?:\.{2,}|…+)\s*[0-9]+`)
+
+func isContentsOnlyPassage(content string) bool {
+	lower := strings.ToLower(content)
+	return (strings.Contains(content, "目录") || strings.Contains(lower, "contents")) && len(contentsEntryRE.FindAllString(content, 4)) >= 3
+}
+func hasPassageImage(content string) bool {
+	return searchutil.MarkdownImageRegex.MatchString(content) || searchutil.HTMLImageSrcRegex.MatchString(content)
 }

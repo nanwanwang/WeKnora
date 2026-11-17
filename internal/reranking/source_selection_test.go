@@ -55,3 +55,22 @@ func TestBalancedSourcesBackfillAndKeepExplicitDocumentPassages(t *testing.T) {
 	require.Empty(t, SelectBalanced(context.Background(), rows, 0, "EMC设计", true))
 	require.Empty(t, SelectBalanced(context.Background(), nil, 10, "EMC设计", true))
 }
+
+func TestExactTopicKeepsBodyAndIllustrationInsteadOfContents(t *testing.T) {
+	rows := []*types.SearchResult{
+		{ID: "toc", KnowledgeID: "topic", KnowledgeBaseID: "kb", KnowledgeTitle: "EMC设计.pdf", Score: 0.95, Content: "目录\n概述....1\n传导....2\n屏蔽....3"},
+		{ID: "body", KnowledgeID: "topic", KnowledgeBaseID: "kb", KnowledgeTitle: "EMC设计.pdf", Score: 0.9, Content: "EMC design principles"},
+		{ID: "diagram", KnowledgeID: "topic", KnowledgeBaseID: "kb", KnowledgeTitle: "EMC设计.pdf", Score: 0.7, Content: "EMC structure ![diagram](resource://abcdefghijklmnopqrstuv)"},
+		{ID: "other", KnowledgeID: "other", KnowledgeBaseID: "kb", KnowledgeTitle: "PCB guide", Score: 0.85, Content: "PCB design"},
+		{ID: "web", ChunkType: "web_search", Score: 0.9, Content: "external"},
+	}
+	indices := SelectBalanced(context.Background(), rows, 4, "EMC设计", true)
+	var ids []string
+	for _, i := range indices {
+		ids = append(ids, rows[i].ID)
+	}
+	require.ElementsMatch(t, []string{"body", "diagram", "other", "web"}, ids)
+	// A single slot still chooses substantive evidence; no new candidate is fetched.
+	indices = SelectBalanced(context.Background(), rows, 1, "EMC设计", true)
+	require.Equal(t, "body", rows[indices[0]].ID)
+}

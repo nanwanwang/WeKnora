@@ -89,6 +89,11 @@ func prepareMessagesWithModelContext(
 		}))
 	}
 	modelContexts := strings.Join(contextParts, "\n")
+	if catalog := buildCitationCatalog(registry, ordered); catalog != "" {
+		modelContexts += "\n" + catalog
+	}
+	messages[0].Content += evidencePresentationPrompt
+
 	if strings.TrimSpace(modelContexts) == "" {
 		modelContexts = "Retrieved source bodies could not be verified. Do not cite or infer facts from " +
 			"unavailable retrieval evidence."
@@ -105,6 +110,7 @@ func prepareMessagesWithModelContext(
 	if !replaced {
 		messages[last].Content = modelContexts + "\n\n" + messages[last].Content
 	}
+	messages[last].Content += buildIllustrationReminder(registry, ordered, chatManage.UserContent)
 	if chatManage.ChatModelSupportsVision && len(chatManage.ContextImages) > 0 {
 		count := min(len(chatManage.ContextImageChunkIDs), len(chatManage.ContextImages))
 		ids := chatManage.ContextImageChunkIDs[:count]
