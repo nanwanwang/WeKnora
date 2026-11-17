@@ -30,9 +30,8 @@ func IsTopicQuery(query string) bool {
 	return n >= 2 && n <= 40 && len(strings.Fields(query)) <= 6 && !strings.ContainsAny(query, "?？!！。;；\n")
 }
 
-// DocumentTitleHint recognizes a single quoted title or the conventional title
-// of a product-inspection specification. It is a preference among existing
-// candidates, not an authorization scope or proof that a passage answers.
+// DocumentTitleHint uses the title explicitly given in the query, or matches
+// a short query to an existing filename. The caller checks eligibility.
 func DocumentTitleHint(query string) (title string, topic bool) {
 	normalized := NormalizeDocumentTitle(query)
 	if strings.ContainsAny(normalized, "《》") {
@@ -43,15 +42,6 @@ func DocumentTitleHint(query string) (title string, topic bool) {
 			}
 		}
 		return "", false
-	}
-	subject, remainder, found := strings.Cut(normalized, "产品")
-	if found && !strings.Contains(remainder, "产品") &&
-		(strings.HasPrefix(remainder, "外观检验") || strings.HasPrefix(remainder, "检验")) {
-		if n := utf8.RuneCountInString(subject); n >= 2 && n <= 12 &&
-			strings.IndexFunc(subject, func(r rune) bool { return !unicode.Is(unicode.Han, r) }) == -1 {
-			title := subject + "产品检验规范"
-			return title, normalized == title
-		}
 	}
 	if IsTopicQuery(query) {
 		return normalized, true

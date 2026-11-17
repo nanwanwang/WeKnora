@@ -99,7 +99,7 @@ func readHTMLTableContext(block string, offset int) (htmlTableContext, bool) {
 		}
 		lines = append(lines, strings.Join(labels, " | "))
 	}
-	header := "原表列标题（从左到右）：\n" + strings.Join(lines, "\n")
+	header := tableContextPrefix + strings.Join(lines, "\n")
 	if runeLen(header) > 384 {
 		return htmlTableContext{}, false
 	}
@@ -113,11 +113,18 @@ func readHTMLTableContext(block string, offset int) (htmlTableContext, bool) {
 
 type htmlHeaderRow struct {
 	labels          []string
+	cells           []htmlTableCell
 	columns         int
 	flat            bool
 	groups          bool
 	columnHeaders   bool
 	looksLikeLabels bool
+}
+
+type htmlTableCell struct {
+	text    string
+	colspan int
+	rowspan int
 }
 
 func readHTMLHeaderRow(row string) htmlHeaderRow {
@@ -132,8 +139,11 @@ func readHTMLHeaderRow(row string) htmlHeaderRow {
 			result.groups = result.groups && len(result.labels) >= 2
 			result.columnHeaders = result.columnHeaders && len(result.labels) > 0
 			return result
-		case html.StartTagToken:
+		case html.StartTagToken, html.SelfClosingTagToken:
 			tag := tokenizer.Token()
+			if cell != "" && tag.Data == "br" {
+				label.WriteByte(' ')
+			}
 			if tag.Data != "th" && tag.Data != "td" {
 				continue
 			}
@@ -166,6 +176,7 @@ func readHTMLHeaderRow(row string) htmlHeaderRow {
 				continue
 			}
 			name := strings.Join(strings.Fields(label.String()), " ")
+			result.cells = append(result.cells, htmlTableCell{text: name, colspan: colspan, rowspan: rowspan})
 			result.flat = result.flat && colspan == 1 && rowspan == 1 && name != ""
 			result.groups = result.groups && colspan > 1 && rowspan == 1 && name != ""
 			result.looksLikeLabels = result.looksLikeLabels && strings.IndexFunc(name, unicode.IsLetter) >= 0 &&

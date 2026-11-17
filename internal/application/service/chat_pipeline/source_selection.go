@@ -10,9 +10,8 @@ import (
 )
 
 func sourcePreferenceQuery(chat *types.ChatManage) string {
-	title, topic := searchutil.DocumentTitleHint(chat.UserContent)
-	if strings.ContainsAny(chat.UserContent, "《》") || (title != "" && !topic) {
-		return chat.UserContent
+	if strings.ContainsAny(chat.Query, "《》") {
+		return chat.Query
 	}
 	return chat.RewriteQuery
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/Tencent/WeKnora/internal/infrastructure/chunker"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/modelcontext"
 	"github.com/Tencent/WeKnora/internal/models/chat"
@@ -49,6 +50,7 @@ func prepareMessagesWithModelContext(
 		}
 		knowledgeResults = append(knowledgeResults, result)
 		passage := getEnrichedPassageForChat(ctx, result)
+		passage = chunker.PresentHTMLTableEvidence(passage, result.ContextHeader)
 		if result.ContextHeader != "" && strings.TrimSpace(passage) != "" {
 			passage = result.ContextHeader + "\n\n" + passage
 		}
