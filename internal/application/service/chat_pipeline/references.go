@@ -32,9 +32,11 @@ func prepareMessagesWithModelContext(
 	}
 
 	ordered := expandCitationSources(orderedPipelineReferences(chatManage))
+	ordered = scopeParallelTableQuestion(chatManage, ordered)
 	knowledgeResults := make([]*types.SearchResult, 0, len(ordered))
 	knowledgeRows := make([]map[string]interface{}, 0, len(ordered))
 	webRows := make([]map[string]interface{}, 0)
+	var groupedTables []retrievedParallelTable
 	for _, result := range ordered {
 		if result == nil {
 			continue
@@ -49,8 +51,11 @@ func prepareMessagesWithModelContext(
 			continue
 		}
 		knowledgeResults = append(knowledgeResults, result)
-		passage := getEnrichedPassageForChat(ctx, result)
-		passage = chunker.PresentHTMLTableEvidence(passage, result.ContextHeader)
+		view := chunker.InspectTableEvidence(getEnrichedPassageForChat(ctx, result), result.ContextHeader)
+		passage := view.Text
+		if len(view.ParallelRows) != 0 {
+			groupedTables = append(groupedTables, retrievedParallelTable{chunkID: result.ID, rows: view.ParallelRows})
+		}
 		if result.ContextHeader != "" && strings.TrimSpace(passage) != "" {
 			passage = result.ContextHeader + "\n\n" + passage
 		}
@@ -116,6 +121,7 @@ func prepareMessagesWithModelContext(
 	if !replaced {
 		messages[last].Content = modelContexts + "\n\n" + messages[last].Content
 	}
+	messages[last].Content += buildTableMatchReminder(registry, groupedTables, chatManage.Query)
 	messages[last].Content += buildIllustrationReminder(registry, ordered, chatManage.UserContent)
 	if chatManage.ChatModelSupportsVision && len(chatManage.ContextImages) > 0 {
 		count := min(len(chatManage.ContextImageChunkIDs), len(chatManage.ContextImages))

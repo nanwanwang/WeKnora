@@ -47,3 +47,15 @@ After`
 	withImage := strings.Replace(body, "Dust test", `<img src="example.png">`, 1)
 	require.Equal(t, withImage, PresentHTMLTableEvidence(withImage, ""))
 }
+
+func TestPresentTableEvidenceRecognizesRepeatedColumnsInLegacyIndex(t *testing.T) {
+	body := "仓库 采购\n货号 描述 批号 描述\nBX-2 白盒 JD-9 红箱\nAX-3 黑盒 MD-8 蓝箱\n\n后续正文 L<5mm"
+	view := PresentTableEvidence(body, "")
+	require.Contains(t, view, "原表列组 仓库")
+	require.Contains(t, view, "货号 = BX-2 | 描述 = 白盒")
+	require.Contains(t, view, "原表列组 采购")
+	require.Contains(t, view, "批号 = JD-9 | 描述 = 红箱")
+	require.Contains(t, view, "后续正文 L<5mm")
+	withoutRepeat := strings.Replace(body, "批号 描述", "批号 属性", 1)
+	require.Equal(t, withoutRepeat, PresentTableEvidence(withoutRepeat, ""))
+}

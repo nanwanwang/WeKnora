@@ -19,14 +19,35 @@ type tableColumnGroup struct {
 	span  int
 }
 
+type TableEvidence struct {
+	Text         string
+	ParallelRows []ParallelTableRow
+}
+
+// ParallelTableRow retains the original row and which cells belong to each group.
+type ParallelTableRow struct {
+	Groups []ParallelTableGroup
+}
+
+type ParallelTableGroup struct {
+	Name   string
+	Labels []string
+	Cells  []string
+}
+
 // PresentHTMLTableEvidence gives the model the relationships declared by the
 // table's spans. It leaves the stored text and citation identity intact.
 func PresentHTMLTableEvidence(passage, contextHeader string) string {
+	return inspectHTMLTableEvidence(passage, contextHeader).Text
+}
+
+func inspectHTMLTableEvidence(passage, contextHeader string) TableEvidence {
 	if strings.Contains(passage, "```") || strings.Contains(passage, "~~~") || len(passage) > 32<<10 {
-		return passage
+		return TableEvidence{Text: passage}
 	}
 	indices := htmlTableRow.FindAllStringIndex(passage, -1)
 	var output strings.Builder
+	var parallelRows []ParallelTableRow
 	cursor := 0
 	for start := 0; start < len(indices); {
 		end := start + 1
@@ -39,29 +60,31 @@ func PresentHTMLTableEvidence(passage, contextHeader string) string {
 		if start == 0 && !htmlTableOpen.MatchString(passage[:first]) {
 			header = contextHeader
 		}
-		if view := presentHTMLRows(rows, header); view != "" && len(view) <= 2*len(rows)+256 {
+		view := presentHTMLRows(rows, header)
+		if view.Text != "" && len(view.Text) <= 2*len(rows)+256 {
 			output.WriteString(passage[cursor:first])
-			output.WriteString("\n" + view + "\n")
+			output.WriteString("\n" + view.Text + "\n")
+			parallelRows = append(parallelRows, view.ParallelRows...)
 			cursor = last
 		}
 		start = end
 	}
 	if cursor == 0 {
-		return passage
+		return TableEvidence{Text: passage}
 	}
 	output.WriteString(passage[cursor:])
-	return output.String()
+	return TableEvidence{Text: output.String(), ParallelRows: parallelRows}
 }
 
-func presentHTMLRows(body, contextHeader string) string {
+func presentHTMLRows(body, contextHeader string) TableEvidence {
 	if richTableMarkup.MatchString(body) {
-		return ""
+		return TableEvidence{}
 	}
 	var rows []htmlHeaderRow
 	for _, row := range htmlTableRow.FindAllString(body, -1) {
 		parsed := readHTMLHeaderRow(row)
 		if len(parsed.cells) == 0 || parsed.columns > 64 {
-			return ""
+			return TableEvidence{}
 		}
 		rows = append(rows, parsed)
 	}
@@ -79,7 +102,7 @@ func presentHTMLRows(body, contextHeader string) string {
 	if len(groups) > 1 {
 		return renderColumnGroups(groups, labels, rows)
 	}
-	return renderMergedRows(rows)
+	return TableEvidence{Text: renderMergedRows(rows)}
 }
 
 func inheritedTableGroups(contextHeader string) ([]tableColumnGroup, []string) {
@@ -117,32 +140,38 @@ func inheritedTableGroups(contextHeader string) ([]tableColumnGroup, []string) {
 	return groups, labels
 }
 
-func renderColumnGroups(groups []tableColumnGroup, labels []string, rows []htmlHeaderRow) string {
+func renderColumnGroups(groups []tableColumnGroup, labels []string, rows []htmlHeaderRow) TableEvidence {
 	for _, row := range rows {
 		if len(row.cells) != len(labels) {
-			return ""
+			return TableEvidence{}
 		}
 		for _, cell := range row.cells {
 			if cell.colspan != 1 || cell.rowspan != 1 {
-				return ""
+				return TableEvidence{}
 			}
 		}
 	}
 	var output strings.Builder
+	parallelRows := make([]ParallelTableRow, len(rows))
 	offset := 0
 	for _, group := range groups {
 		fmt.Fprintf(&output, "### 原表列组 %s\n", group.label)
-		for _, row := range rows {
+		for index, row := range rows {
+			cells := make([]string, 0, group.span)
 			var values []string
 			for c := offset; c < offset+group.span; c++ {
 				values = append(values, labels[c]+" = "+row.cells[c].text)
+				cells = append(cells, row.cells[c].text)
 			}
+			parallelRows[index].Groups = append(parallelRows[index].Groups, ParallelTableGroup{
+				Name: group.label, Labels: labels[offset : offset+group.span], Cells: cells,
+			})
 			fmt.Fprintf(&output, "- %s\n", strings.Join(values, " | "))
 		}
 		output.WriteByte('\n')
 		offset += group.span
 	}
-	return strings.TrimSpace(output.String())
+	return TableEvidence{Text: strings.TrimSpace(output.String()), ParallelRows: parallelRows}
 }
 
 type carriedTableCell struct {

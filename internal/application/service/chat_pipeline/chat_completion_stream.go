@@ -71,6 +71,10 @@ func (p *PluginChatCompletionStream) OnEvent(ctx context.Context,
 	// Prepare base messages without history
 
 	chatMessages, modelContext := prepareMessagesWithModelContext(ctx, chatManage)
+	var review answerEvidenceReview
+	if opt == nil || len(opt.Format) == 0 {
+		review = reviewAnswerEvidence(chatManage, modelContext)
+	}
 	chatMessages = modelContext.EncodeMessages(chatMessages)
 	reportModelContextLeaks(ctx, "Stream", modelContext, chatMessages)
 	ctx = withPromptCacheMetadata(ctx, chatModel, chatMessages, opt, "knowledge_qa")
@@ -95,10 +99,19 @@ func (p *PluginChatCompletionStream) OnEvent(ctx context.Context,
 	})
 
 	// Initiate streaming chat model call with independent context
-	pipelineInfo(ctx, "Stream", "model_call", map[string]interface{}{
-		"chat_model": chatManage.ChatModelID,
-	})
-	responseChan, err := chatModel.ChatStream(ctx, chatMessages, opt)
+	var responseChan <-chan types.StreamResponse
+	if review.pending != "" {
+		verified := make(chan types.StreamResponse, 2)
+		verified <- types.StreamResponse{ResponseType: types.ResponseTypeAnswer, Content: review.pending}
+		verified <- types.StreamResponse{ResponseType: types.ResponseTypeAnswer, Done: true, FinishReason: "stop"}
+		close(verified)
+		responseChan = verified
+	} else {
+		pipelineInfo(ctx, "Stream", "model_call", map[string]interface{}{
+			"chat_model": chatManage.ChatModelID,
+		})
+		responseChan, err = chatModel.ChatStream(ctx, chatMessages, opt)
+	}
 	if err != nil {
 		pipelineError(ctx, "Stream", "model_call", map[string]interface{}{
 			"chat_model": chatManage.ChatModelID,
@@ -114,9 +127,11 @@ func (p *PluginChatCompletionStream) OnEvent(ctx context.Context,
 		return ErrModelCall.WithError(errors.New("chat stream returned nil channel"))
 	}
 
-	pipelineInfo(ctx, "Stream", "model_started", map[string]interface{}{
-		"session_id": chatManage.SessionID,
-	})
+	if review.pending == "" {
+		pipelineInfo(ctx, "Stream", "model_started", map[string]interface{}{
+			"session_id": chatManage.SessionID,
+		})
+	}
 
 	// Start goroutine to consume channel and emit events directly.
 	// reasoning_content is routed to EventAgentThought (SSE response_type=thinking)
@@ -131,6 +146,8 @@ func (p *PluginChatCompletionStream) OnEvent(ctx context.Context,
 		thinkingOpen := false
 		answerCompleted := false
 		answerProduced := false
+		var reviewedAnswer strings.Builder
+		collectForReview := len(review.rows) != 0
 		// Providers report usage on the final stream chunk; keep the latest
 		// seen so the closing answer event can hand it to the QA turn
 		// (issue #3865: the complete event carried no usage on this path).
@@ -294,6 +311,14 @@ func (p *PluginChatCompletionStream) OnEvent(ctx context.Context,
 						answerProduced = true
 					}
 					if !response.Done {
+						if collectForReview {
+							if reviewedAnswer.Len()+len(response.Content) <= 64<<10 {
+								reviewedAnswer.WriteString(response.Content)
+							} else {
+								collectForReview = false
+								reviewedAnswer.Reset()
+							}
+						}
 						closeThinking()
 						_ = eventBus.Emit(ctx, types.Event{
 							ID:        answerID,
@@ -312,6 +337,9 @@ func (p *PluginChatCompletionStream) OnEvent(ctx context.Context,
 					if truncated && !answerProduced {
 						response.Content = EmptyTruncatedAnswerFallback
 						answerProduced = true
+					}
+					if collectForReview && !truncated {
+						response.Content += review.supplement(reviewedAnswer.String() + response.Content)
 					}
 					closeThinking()
 					pendingClose = &event.AgentFinalAnswerData{

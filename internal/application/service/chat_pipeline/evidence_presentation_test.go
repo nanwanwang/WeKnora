@@ -90,3 +90,47 @@ func TestTableHeadersReachTheModelUnderTheOriginalCitation(t *testing.T) {
 	require.Contains(t, registry.DecodeOutputText("<ref id=\"1\"/>"), "chunk_id=\"table-row\"")
 	require.Empty(t, registry.DecodeOutputText("<ref id=\"2\"/>"))
 }
+
+func TestParallelTableQuestionScopesModelEvidence(t *testing.T) {
+	table := "机械 定时\n长度 编码 时长 编码\n12mm L12 4s T4\n16mm L16 6s T6"
+	entries := &types.SearchResult{
+		ID: "matrix", KnowledgeID: "label-guide", KnowledgeBaseID: "manuals",
+		ChunkType: string(types.ChunkTypeText), KnowledgeTitle: "Label guide", Content: table,
+	}
+	definition := &types.SearchResult{
+		ID: "guide-intro", KnowledgeID: "label-guide", KnowledgeBaseID: "manuals",
+		ChunkType: string(types.ChunkTypeText), Content: "The columns list label codes.",
+	}
+	other := &types.SearchResult{
+		ID: "other", KnowledgeID: "other-guide", KnowledgeBaseID: "manuals",
+		ChunkType: string(types.ChunkTypeText), Content: "A different procedure happens to mention 12mm and 4s.",
+	}
+	competing := *other
+	competing.Content = table
+	for _, tc := range []struct {
+		name, query string
+		extra       *types.SearchResult
+		wantOther   bool
+	}{
+		{"one table", "编码表把12 mm和4 s放在同一行，表示等价吗？", other, false},
+		{"relationships in table", "编码表里的12 mm和4 s可以互换吗？", other, false},
+		{"different rows", "编码表把12 mm和6 s放在同一行吗？", other, true},
+		{"explicit comparison", "编码表把12 mm和4 s放在同一行，请与其他标准对照。", other, true},
+		{"ambiguous table", "编码表把12 mm和4 s放在同一行，表示等价吗？", &competing, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			manage := &types.ChatManage{
+				PipelineRequest: types.PipelineRequest{Query: tc.query},
+				PipelineState: types.PipelineState{
+					UserContent: tc.query, MergeResult: []*types.SearchResult{tc.extra, entries, definition},
+				},
+			}
+			messages, registry := prepareMessagesWithModelContext(context.Background(), manage)
+			require.NotEmpty(t, registry.ChunkHandle(entries.ID))
+			require.NotEmpty(t, registry.ChunkHandle(definition.ID))
+			require.Equal(t, tc.wantOther, registry.ChunkHandle(other.ID) != "")
+			require.Contains(t, messages[1].Content, `机械 \| 长度 = 12mm \| 编码 = L12 `+registry.CitationTemplate(registry.ChunkHandle(entries.ID)))
+			require.Len(t, manage.MergeResult, 3)
+		})
+	}
+}

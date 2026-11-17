@@ -51,15 +51,24 @@ func (p *PluginChatCompletion) OnEvent(
 		"message_count": len(chatManage.History) + 2,
 	})
 	chatMessages, modelContext := prepareMessagesWithModelContext(ctx, chatManage)
+	var review answerEvidenceReview
+	if opt == nil || len(opt.Format) == 0 {
+		review = reviewAnswerEvidence(chatManage, modelContext)
+	}
 	chatMessages = modelContext.EncodeMessages(chatMessages)
 	reportModelContextLeaks(ctx, "Completion", modelContext, chatMessages)
 	ctx = withPromptCacheMetadata(ctx, chatModel, chatMessages, opt, "knowledge_qa")
 
 	// Call the chat model to generate response
-	pipelineInfo(ctx, "Completion", "model_call", map[string]interface{}{
-		"chat_model": chatManage.ChatModelID,
-	})
-	chatResponse, err := chatModel.Chat(ctx, chatMessages, opt)
+	var chatResponse *types.ChatResponse
+	if review.pending != "" {
+		chatResponse = &types.ChatResponse{Content: review.pending, FinishReason: "stop"}
+	} else {
+		pipelineInfo(ctx, "Completion", "model_call", map[string]interface{}{
+			"chat_model": chatManage.ChatModelID,
+		})
+		chatResponse, err = chatModel.Chat(ctx, chatMessages, opt)
+	}
 	if err != nil {
 		pipelineError(ctx, "Completion", "model_call", map[string]interface{}{
 			"chat_model": chatManage.ChatModelID,
@@ -68,6 +77,9 @@ func (p *PluginChatCompletion) OnEvent(
 		return ErrModelCall.WithError(err)
 	}
 	modelContext.DecodeResponse(chatResponse)
+	if !IsLengthFinishReason(chatResponse.FinishReason) {
+		chatResponse.Content += review.supplement(chatResponse.Content)
+	}
 	if orphans := modelContext.OrphanResourceHandles(chatResponse.Content); len(orphans) > 0 {
 		pipelineWarn(ctx, "Completion", "orphan_resource_handles", map[string]interface{}{
 			"session_id": chatManage.SessionID,
