@@ -19,6 +19,7 @@ import (
 // Contains query-answer pairs and associated knowledge references
 // Used for tracking conversation context and history
 type History struct {
+	UserQuery           string     `json:"-"` // Original user text without attachment or image context.
 	Query               string     // User query text
 	Answer              string     // System response text
 	CreateAt            time.Time  // When this history entry was created

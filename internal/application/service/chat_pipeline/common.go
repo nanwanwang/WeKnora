@@ -153,7 +153,8 @@ func loadAndProcessHistory(
 			// envelopes and old citation instructions into the current protocol.
 			// Historical references are carried separately in KnowledgeReferences
 			// and can be re-merged into this turn's freshly rendered context.
-			h.Query = message.Content
+			h.UserQuery = message.Content
+			h.Query = h.UserQuery
 			if strings.TrimSpace(h.Query) == "" && (len(message.Images) > 0 || len(message.Attachments) > 0) {
 				h.Query = types.UploadOnlyQuestion(types.LanguageFromContextOrDefault(ctx))
 			}
