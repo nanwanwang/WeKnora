@@ -66,9 +66,15 @@ func (p *PluginQueryUnderstand) OnEvent(ctx context.Context,
 	hasImages := len(chatManage.Images) > 0
 	needRewrite := chatManage.EnableRewrite
 	if !needRewrite && !hasImages {
+		if count := len(chatManage.History); chatManage.MaxRounds > 0 && count > 0 {
+			if last := chatManage.History[count-1]; last != nil {
+				chatManage.RewriteQuery = qualifyFollowup(chatManage.Query, last.UserQuery)
+			}
+		}
 		pipelineInfo(ctx, "QueryUnderstand", "skip", map[string]interface{}{
-			"session_id": chatManage.SessionID,
-			"reason":     "rewrite_disabled_no_images",
+			"session_id":       chatManage.SessionID,
+			"reason":           "rewrite_disabled_no_images",
+			"followup_context": chatManage.RewriteQuery != chatManage.Query,
 		})
 		return next()
 	}
