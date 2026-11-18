@@ -88,6 +88,24 @@ func readHTMLTableContext(block string, offset int) (htmlTableContext, bool) {
 			count = 2
 		}
 	}
+	qualifiedHeader := ""
+	if count == 0 || first.columnHeaders {
+		parsed := make([]htmlHeaderRow, 0, min(len(rows), 9))
+		for _, row := range rows[:min(len(rows), 9)] {
+			parsed = append(parsed, readHTMLHeaderRow(block[row[0]:row[1]]))
+		}
+		if labels, body := readHTMLColumnPaths(parsed); body > 0 && (count == 0 || count == body) {
+			qualifiedHeader = tableColumnPathsPrefix + strings.Join(labels, " | ")
+			if count == 0 && runeLen(qualifiedHeader) <= 384 {
+				return htmlTableContext{
+					headerStart: offset + runeLen(block[:rows[0][0]]),
+					bodyStart:   offset + runeLen(block[:rows[body][0]]),
+					bodyEnd:     offset + runeLen(block[:rows[len(rows)-1][1]]),
+					header:      qualifiedHeader,
+				}, true
+			}
+		}
+	}
 	if count == 0 || count == len(rows) || count > 8 {
 		return htmlTableContext{}, false
 	}
@@ -100,6 +118,9 @@ func readHTMLTableContext(block string, offset int) (htmlTableContext, bool) {
 		lines = append(lines, strings.Join(labels, " | "))
 	}
 	header := tableContextPrefix + strings.Join(lines, "\n")
+	if qualifiedHeader != "" && runeLen(header+"\n\n"+qualifiedHeader) <= 384 {
+		header += "\n\n" + qualifiedHeader
+	}
 	if runeLen(header) > 384 {
 		return htmlTableContext{}, false
 	}
