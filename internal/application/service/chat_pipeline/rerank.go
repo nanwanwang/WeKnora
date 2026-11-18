@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/Tencent/WeKnora/internal/reranking"
+	"github.com/Tencent/WeKnora/internal/searchutil"
 	"github.com/Tencent/WeKnora/internal/tracing/langfuse"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
@@ -57,6 +58,24 @@ func (p *PluginRerank) OnEvent(ctx context.Context,
 		ResultCount:        len(chatManage.SearchResult),
 	}
 	chatManage.RerankDiagnostics = diag
+	// A pasted value has no semantic ranking task. Preserve exact evidence
+	// instead of letting a similarity threshold remove matching identifiers.
+	exact := identifierRecords(chatManage)
+	if len(exact) == 0 && len(chatManage.QueryImage) == 0 {
+		value := searchutil.LiteralLookup(chatManage.Query)
+		for _, hit := range chatManage.SearchResult {
+			if value != "" && hit != nil && hit.MatchType != types.MatchTypeWebSearch && searchutil.ContainsLiteral(hit.Content, value) {
+				exact = append(exact, hit)
+			}
+		}
+	}
+	if len(exact) > 0 {
+		chatManage.RerankResult = exact
+		diag.Outcome = types.RerankOutcomeNoModel
+		diag.ResultCount = len(exact)
+		pipelineInfo(ctx, "Rerank", "literal_lookup", map[string]interface{}{"result_count": len(exact)})
+		return next()
+	}
 	if len(chatManage.SearchResult) == 0 {
 		diag.Outcome = types.RerankOutcomeNoCandidates
 		pipelineInfo(ctx, "Rerank", "skip", map[string]interface{}{

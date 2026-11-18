@@ -9,6 +9,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/models/embedding"
 	"github.com/Tencent/WeKnora/internal/models/imageprep"
+	"github.com/Tencent/WeKnora/internal/searchutil"
 	"github.com/Tencent/WeKnora/internal/tracing/langfuse"
 	"github.com/Tencent/WeKnora/internal/types"
 	secutils "github.com/Tencent/WeKnora/internal/utils"
@@ -196,6 +197,18 @@ func (s *knowledgeBaseService) HybridSearch(ctx context.Context,
 	recordImageRecallDecision(ctx, "fusion.candidate_selection", "",
 		summarizeImageCandidateCut(chunks, params.MatchCount))
 
+	if params.LiteralAll && chunks[0].MatchType == types.MatchTypeLiteral {
+		var results []*types.SearchResult
+		for start := 0; start < len(chunks); start += maxRetrievalPoolSize {
+			batch := chunks[start:min(start+maxRetrievalPoolSize, len(chunks))]
+			hydrated, err := s.processSearchResults(ctx, batch, len(batch), true)
+			if err != nil {
+				return nil, err
+			}
+			results = append(results, hydrated...)
+		}
+		return results, nil
+	}
 	return s.processSearchResults(ctx, chunks, params.MatchCount, params.SkipContextEnrichment)
 }
 
@@ -245,6 +258,16 @@ func (s *knowledgeBaseService) hybridSearchCandidates(ctx context.Context,
 	// engine resolution downstream.
 	if err := s.authorizeKBAccess(ctx, kbs); err != nil {
 		return nil, err
+	}
+	// Literal evidence is loaded only after all requested scopes are authorized.
+	// Existing table rows and prose work equally, without selecting a column.
+	if pickPrimary(kbs, id) == nil {
+		return nil, apperrors.NewNotFoundError("knowledge base not found")
+	}
+	hits, err := s.recallLiteral(ctx, kbs, params)
+	_, qualifier := searchutil.QualifiedRecordLookup(params.QueryText)
+	if err != nil || len(hits) > 0 || (params.LiteralAll && qualifier != "") {
+		return hits, err
 	}
 
 	// Explicit embedding-model consistency check. Multi-KB searches that

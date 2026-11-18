@@ -12,6 +12,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/common"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/models/chat"
+	"github.com/Tencent/WeKnora/internal/searchutil"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/Tencent/WeKnora/internal/utils"
@@ -65,6 +66,18 @@ func (p *PluginDataAnalysis) OnEvent(
 ) *PluginError {
 	if !chatManage.NeedsRetrieval() {
 		return next()
+	}
+	// Pasted values are retrieval requests, not permission to guess a column
+	// and analyze only the first spreadsheet. Keep normal retrieval on a miss.
+	if usesRecordLookup(chatManage) {
+		return next()
+	}
+	if value := searchutil.LiteralLookup(chatManage.Query); value != "" && len(chatManage.QueryImage) == 0 {
+		for _, hit := range chatManage.MergeResult {
+			if hit != nil && searchutil.ContainsLiteral(hit.Content, value) {
+				return next()
+			}
+		}
 	}
 	// 1. Check if there are any CSV/Excel files in MergeResult
 	var dataFiles []*types.SearchResult
@@ -129,6 +142,11 @@ func (p *PluginDataAnalysis) OnEvent(
 		return next()
 	}
 
+	// A successful query with no rows provides no source evidence.
+	if rowCount, ok := toolResult.Data["row_count"].(int); ok && rowCount == 0 {
+		return next()
+	}
+
 	// 5. Store result
 	// Create a new SearchResult for the analysis output
 	analysisResult := &types.SearchResult{
@@ -137,6 +155,7 @@ func (p *PluginDataAnalysis) OnEvent(
 		Score:                   1.0,
 		MatchType:               types.MatchTypeDataAnalysis,
 		KnowledgeID:             knowledge.ID,
+		KnowledgeBaseID:         knowledge.KnowledgeBaseID,
 		KnowledgeTitle:          knowledge.Title,
 		KnowledgeFilename:       knowledge.FileName,
 		KnowledgeDescription:    knowledge.Description,

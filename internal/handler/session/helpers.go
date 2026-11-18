@@ -477,6 +477,7 @@ func searchResultFromMap(refMap map[string]interface{}) *types.SearchResult {
 		EndAt:                   int(getFloat64(refMap, "end_at")),
 		Seq:                     int(getFloat64(refMap, "seq")),
 		Score:                   getFloat64(refMap, "score"),
+		MatchType:               types.MatchType(getFloat64(refMap, "match_type")),
 		ChunkType:               getString(refMap, "chunk_type"),
 		ParentChunkID:           getString(refMap, "parent_chunk_id"),
 		ImageInfo:               getString(refMap, "image_info"),

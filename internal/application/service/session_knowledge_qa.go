@@ -1026,6 +1026,12 @@ func (s *sessionService) runKnowledgeSearchPipeline(
 
 // handleFallbackResponse handles fallback response based on strategy
 func (s *sessionService) handleFallbackResponse(ctx context.Context, chatManage *types.ChatManage) {
+	if chatpipeline.IsQualifiedRecordLookup(chatManage) {
+		const content = "在所选知识库中，没有找到同时匹配该型号和故障描述的记录。可以只输入型号查看维修记录，或用更短的故障关键词再查。"
+		chatManage.ChatResponse = &types.ChatResponse{Content: content}
+		s.emitFallbackAnswer(ctx, chatManage, content)
+		return
+	}
 	if chatManage.FallbackStrategy == types.FallbackStrategyModel {
 		s.handleModelFallback(ctx, chatManage)
 	} else {
@@ -1036,6 +1042,9 @@ func (s *sessionService) handleFallbackResponse(ctx context.Context, chatManage 
 // handleFixedFallback handles fixed fallback response
 func (s *sessionService) handleFixedFallback(ctx context.Context, chatManage *types.ChatManage) {
 	fallbackContent := chatManage.FallbackResponse
+	if strings.TrimSpace(fallbackContent) == "" {
+		fallbackContent = "当前知识库未检索到相关资料。可以换一个关键词或补充型号后再试。"
+	}
 	chatManage.ChatResponse = &types.ChatResponse{Content: fallbackContent}
 	s.emitFallbackAnswer(ctx, chatManage, fallbackContent)
 }

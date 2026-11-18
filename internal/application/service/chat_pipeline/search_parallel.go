@@ -105,6 +105,10 @@ func (p *PluginSearchParallel) OnEvent(ctx context.Context,
 		"rewrite_query": chatManage.RewriteQuery,
 	})
 
+	if IsQualifiedRecordLookup(chatManage) {
+		return p.searchPlugin.OnEvent(ctx, types.CHUNK_SEARCH, chatManage, next)
+	}
+
 	// Deep-copy to avoid concurrent read/write on shared slice fields
 	chunkCM := chatManage.Clone()
 	chunkCM.SearchResult = nil

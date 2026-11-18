@@ -29,6 +29,7 @@ const (
 	MatchTypeWebSearch    // 网络搜索匹配类型
 	MatchTypeDirectLoad   // Deprecated: reserved to preserve serialized enum values
 	MatchTypeDataAnalysis // 数据分析匹配类型
+	MatchTypeLiteral      // Literal body match, independent of vector payload versions
 )
 
 // IndexInfo contains information about indexed content

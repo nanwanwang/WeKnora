@@ -72,6 +72,7 @@ func TestSearchResultFromMap_RoundTrip(t *testing.T) {
 		EndAt:                   20,
 		Seq:                     2,
 		Score:                   4.5,
+		MatchType:               types.MatchTypeDataAnalysis,
 		ChunkType:               "text",
 		ParentChunkID:           "parent-1",
 		ImageInfo:               `[{"url":"cdn.example.com"}]`,
@@ -107,6 +108,7 @@ func TestSearchResultFromMap_RoundTrip(t *testing.T) {
 	assert.Equal(t, original.EndAt, got.EndAt)
 	assert.Equal(t, original.Seq, got.Seq)
 	assert.Equal(t, original.Score, got.Score)
+	assert.Equal(t, original.MatchType, got.MatchType)
 	assert.Equal(t, original.ChunkType, got.ChunkType)
 	assert.Equal(t, original.ParentChunkID, got.ParentChunkID)
 	assert.Equal(t, original.ImageInfo, got.ImageInfo)

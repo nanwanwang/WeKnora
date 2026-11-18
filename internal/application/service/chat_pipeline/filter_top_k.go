@@ -27,6 +27,9 @@ func (p *PluginFilterTopK) ActivationEvents() []types.EventType {
 func (p *PluginFilterTopK) OnEvent(ctx context.Context,
 	eventType types.EventType, chatManage *types.ChatManage, next func() *PluginError,
 ) *PluginError {
+	if hasIdentifierRecords(chatManage) {
+		return next()
+	}
 	if !chatManage.NeedsRetrieval() {
 		return next()
 	}

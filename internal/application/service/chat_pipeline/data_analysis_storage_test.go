@@ -65,6 +65,7 @@ func TestQuickAnswerDataAnalysisUsesWorkspaceStorage(t *testing.T) {
 	t.Cleanup(func() { _ = db.Close() })
 	model := &scriptedChat{replies: []string{
 		`{"needs_analysis":true,"sql":"SELECT COUNT(*) AS total FROM dataset"}`,
+		`{"needs_analysis":true,"sql":"SELECT * FROM dataset WHERE amount = 777"}`,
 	}}
 	plugin := NewPluginDataAnalysis(
 		NewEventManager(), &stubModelService{model: model},
@@ -89,5 +90,11 @@ func TestQuickAnswerDataAnalysisUsesWorkspaceStorage(t *testing.T) {
 	require.NotZero(t, resolver.calls)
 	require.Len(t, turn.MergeResult, 2)
 	require.Equal(t, types.MatchTypeDataAnalysis, turn.MergeResult[1].MatchType)
+	require.Equal(t, knowledge.KnowledgeBaseID, turn.MergeResult[1].KnowledgeBaseID)
 	require.Contains(t, turn.MergeResult[1].Content, `{"total":"2"}`)
+
+	turn.MergeResult = turn.MergeResult[:1]
+	turn.Query = "select the nonexistent record"
+	require.Nil(t, plugin.OnEvent(ctx, types.DATA_ANALYSIS, turn, func() *PluginError { return nil }))
+	require.Len(t, turn.MergeResult, 1, "zero SQL rows must not create an analysis source")
 }

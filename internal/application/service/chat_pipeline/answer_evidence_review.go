@@ -34,6 +34,9 @@ type evidenceRuleRow struct {
 }
 
 func reviewAnswerEvidence(request *types.ChatManage, registry *modelcontext.Registry) answerEvidenceReview {
+	if answer := renderIdentifierRecords(request, registry); answer != "" {
+		return answerEvidenceReview{pending: answer}
+	}
 	query := strings.TrimSpace(request.Query)
 	if query == "" || len(request.Images) != 0 || explicitFormatRE.MatchString(query) {
 		return answerEvidenceReview{}

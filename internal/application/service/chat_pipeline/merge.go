@@ -55,6 +55,14 @@ func (p *PluginMerge) OnEvent(ctx context.Context,
 	// Step 1: Select input
 	searchResult := p.selectInputResults(ctx, chatManage)
 
+	// Identifier lookup enumerates records, not semantically similar passages.
+	// Keep each chunk; parent expansion supplies column labels for old indexes.
+	if hasIdentifierRecords(chatManage) {
+		exact := identifierRecords(chatManage)
+		chatManage.MergeResult = p.resolveParentChunks(ctx, chatManage, exact)
+		p.attachCitationSources(ctx, chatManage.MergeResult)
+		return next()
+	}
 	// Step 2: Initial dedup
 	preserveDocuments := preservePolicyDocuments(chatManage)
 	searchResult = p.dedup(ctx, "dedup_summary", searchResult, preserveDocuments)

@@ -120,7 +120,7 @@ func (p *PluginSearch) OnEvent(ctx context.Context,
 	}()
 
 	wg.Wait()
-	if kbSearchErr != nil && len(allResults) == 0 {
+	if kbSearchErr != nil && (len(allResults) == 0 || usesRecordLookup(chatManage)) {
 		pipelineError(ctx, "Search", "kb_search_failed", map[string]interface{}{
 			"error": kbSearchErr.Error(),
 		})
@@ -138,7 +138,7 @@ func (p *PluginSearch) OnEvent(ctx context.Context,
 	logSearchScoreSample(ctx, "result_score_before_normalize", chatManage.SearchResult)
 
 	// If recall is low, attempt query expansion with keyword-focused search
-	if chatManage.EnableQueryExpansion && len(chatManage.SearchResult) < max(1, chatManage.EmbeddingTopK) {
+	if !IsQualifiedRecordLookup(chatManage) && !hasIdentifierRecords(chatManage) && chatManage.EnableQueryExpansion && len(chatManage.SearchResult) < max(1, chatManage.EmbeddingTopK) {
 		expResults := p.runQueryExpansion(ctx, chatManage)
 		if len(expResults) > 0 {
 			chatManage.SearchResult = append(chatManage.SearchResult, expResults...)
@@ -182,6 +182,13 @@ func getSearchResultFromHistory(chatManage *types.ChatManage) []*types.SearchRes
 
 // Policy questions need separate evidence when multiple files use the same template.
 func preservePolicyDocuments(chat *types.ChatManage) bool {
+	if value := searchutil.LiteralLookup(chat.Query); value != "" {
+		for _, hit := range chat.SearchResult {
+			if hit != nil && hit.MatchType == types.MatchTypeLiteral {
+				return true
+			}
+		}
+	}
 	query := strings.ToLower(chat.Query + " " + chat.RewriteQuery)
 	for _, marker := range []string{"制度", "规章", "条款", "守则", "员工手册", "管理办法", "管理规定", "policy", "policies", "regulation", "bylaw"} {
 		if strings.Contains(query, marker) {
@@ -465,6 +472,10 @@ func (p *PluginSearch) searchByTargets(
 	}
 
 	queryText := strings.TrimSpace(chatManage.RewriteQuery)
+	literalQuery := searchutil.LiteralLookup(chatManage.Query)
+	if literalQuery != "" && len(chatManage.QueryImage) == 0 {
+		queryText = literalQuery
+	}
 
 	// Batch-fetch KB records to determine embedding model grouping.
 	// On failure, all targets fall into an empty-key group and HybridSearch
@@ -555,7 +566,7 @@ func (p *PluginSearch) searchByTargets(
 			var queryEmbedding []float32
 			disableVector := chatManage.DisableVectorMatch
 			searchableTargets := targets
-			if modelKey != "" && !disableVector {
+			if modelKey != "" && !disableVector && (literalQuery == "" || len(chatManage.QueryImage) > 0) {
 				emb, err := p.queryVector(ctx, targets[0].KnowledgeBaseID, queryText, chatManage.QueryImage)
 				if err != nil {
 					if len(chatManage.QueryImage) > 0 {
@@ -624,6 +635,7 @@ func (p *PluginSearch) searchByTargets(
 
 					params := types.SearchParams{
 						EnableTitleMatch:      true,
+						LiteralAll:            usesRecordLookup(chatManage),
 						QueryText:             queryText,
 						QueryEmbedding:        queryEmbedding,
 						KnowledgeBaseIDs:      fullKBIDs,
@@ -704,6 +716,7 @@ func (p *PluginSearch) searchSingleTarget(
 	}
 	params := types.SearchParams{
 		EnableTitleMatch:      true,
+		LiteralAll:            usesRecordLookup(chatManage),
 		QueryText:             queryText,
 		QueryEmbedding:        queryEmbedding,
 		VectorThreshold:       vectorThreshold,

@@ -262,6 +262,9 @@ type SearchResult struct {
 
 // SearchParams represents the search parameters
 type SearchParams struct {
+	// LiteralAll requests a complete identifier lookup inside the authorized scope.
+	// Internal chat use only; resource limits return an error, never a partial set.
+	LiteralAll bool `json:"-"`
 	// QueryText is required unless query_embedding is provided, keyword matching is disabled,
 	// and vector matching remains enabled.
 	QueryText string `json:"query_text" extensions:"x-agent,x-agent-required"`
