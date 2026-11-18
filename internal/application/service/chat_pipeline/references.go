@@ -37,6 +37,7 @@ func prepareMessagesWithModelContext(
 	knowledgeRows := make([]map[string]interface{}, 0, len(ordered))
 	webRows := make([]map[string]interface{}, 0)
 	var groupedTables []retrievedParallelTable
+	qualifiedTable := false
 	for _, result := range ordered {
 		if result == nil {
 			continue
@@ -53,6 +54,7 @@ func prepareMessagesWithModelContext(
 		knowledgeResults = append(knowledgeResults, result)
 		view := chunker.InspectTableEvidence(getEnrichedPassageForChat(ctx, result), result.ContextHeader)
 		passage := view.Text
+		qualifiedTable = qualifiedTable || view.QualifiedColumns
 		if len(view.ParallelRows) != 0 {
 			groupedTables = append(groupedTables, retrievedParallelTable{chunkID: result.ID, rows: view.ParallelRows})
 		}
@@ -104,6 +106,9 @@ func prepareMessagesWithModelContext(
 		modelContexts += "\n" + catalog
 	}
 	messages[0].Content += evidencePresentationPrompt
+	if qualifiedTable {
+		messages[0].Content += "\n对标明列路径的表格，在同一证据行内按完整列路径读数。应用用户本轮修改的条件。该行未列出的值留空，不从相邻行列补值。\n"
+	}
 
 	if strings.TrimSpace(modelContexts) == "" {
 		modelContexts = "Retrieved source bodies could not be verified. Do not cite or infer facts from " +

@@ -11,6 +11,7 @@ const tableContextPrefix = "原表列标题（从左到右）：\n"
 
 var (
 	richTableMarkup = regexp.MustCompile(`(?i)<(?:a|audio|code|figure|iframe|img|object|pre|script|style|svg|table|video)\b`)
+	tableSectionGap = regexp.MustCompile(`(?is)^\s*(</?(thead|tbody)\b[^>]*>\s*)*$`)
 	columnGroupSpan = regexp.MustCompile(`^(.+)（跨([0-9]+)列）$`)
 )
 
@@ -20,8 +21,9 @@ type tableColumnGroup struct {
 }
 
 type TableEvidence struct {
-	Text         string
-	ParallelRows []ParallelTableRow
+	Text             string
+	ParallelRows     []ParallelTableRow
+	QualifiedColumns bool
 }
 
 // ParallelTableRow retains the original row and which cells belong to each group.
@@ -48,10 +50,11 @@ func inspectHTMLTableEvidence(passage, contextHeader string) TableEvidence {
 	indices := htmlTableRow.FindAllStringIndex(passage, -1)
 	var output strings.Builder
 	var parallelRows []ParallelTableRow
+	qualified := false
 	cursor := 0
 	for start := 0; start < len(indices); {
 		end := start + 1
-		for end < len(indices) && strings.TrimSpace(passage[indices[end-1][1]:indices[end][0]]) == "" {
+		for end < len(indices) && tableSectionGap.MatchString(passage[indices[end-1][1]:indices[end][0]]) {
 			end++
 		}
 		first, last := indices[start][0], indices[end-1][1]
@@ -61,10 +64,17 @@ func inspectHTMLTableEvidence(passage, contextHeader string) TableEvidence {
 			header = contextHeader
 		}
 		view := presentHTMLRows(rows, header)
-		if view.Text != "" && len(view.Text) <= 2*len(rows)+256 {
+		limit := 2*len(rows) + 256
+		if view.QualifiedColumns {
+			// Each row repeats the qualified labels. Bound that expansion
+			// separately from the shorter legacy table presentations.
+			limit = min(5*len(rows)+256, 32<<10)
+		}
+		if view.Text != "" && len(view.Text) <= limit {
 			output.WriteString(passage[cursor:first])
 			output.WriteString("\n" + view.Text + "\n")
 			parallelRows = append(parallelRows, view.ParallelRows...)
+			qualified = qualified || view.QualifiedColumns
 			cursor = last
 		}
 		start = end
@@ -73,7 +83,7 @@ func inspectHTMLTableEvidence(passage, contextHeader string) TableEvidence {
 		return TableEvidence{Text: passage}
 	}
 	output.WriteString(passage[cursor:])
-	return TableEvidence{Text: output.String(), ParallelRows: parallelRows}
+	return TableEvidence{Text: output.String(), ParallelRows: parallelRows, QualifiedColumns: qualified}
 }
 
 func presentHTMLRows(body, contextHeader string) TableEvidence {
@@ -101,6 +111,15 @@ func presentHTMLRows(body, contextHeader string) TableEvidence {
 	}
 	if len(groups) > 1 {
 		return renderColumnGroups(groups, labels, rows)
+	}
+	if labels, body := readHTMLColumnPaths(rows); body > 0 {
+		if view := renderHTMLColumnPaths(labels, rows[body:]); view != "" {
+			return TableEvidence{Text: view, QualifiedColumns: true}
+		}
+	} else if labels := inheritedHTMLColumnPaths(contextHeader); len(labels) > 0 {
+		if view := renderHTMLColumnPaths(labels, rows); view != "" {
+			return TableEvidence{Text: view, QualifiedColumns: true}
+		}
 	}
 	return TableEvidence{Text: renderMergedRows(rows)}
 }
