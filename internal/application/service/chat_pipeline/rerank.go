@@ -76,6 +76,17 @@ func (p *PluginRerank) OnEvent(ctx context.Context,
 		pipelineInfo(ctx, "Rerank", "literal_lookup", map[string]interface{}{"result_count": len(exact)})
 		return next()
 	}
+	overview := namedOverviewSources(chatManage.Query, chatManage.SearchResult, chatManage.RerankTopK)
+	if len(overview) != 0 {
+		chatManage.RerankResult = overview
+		diag.Outcome = types.RerankOutcomeNoModel
+		diag.ResultCount = len(overview)
+		if len(overview) < len(chatManage.SearchResult) {
+			chatManage.RecordRetrievalCut(types.RetrievalStageRerank, len(chatManage.SearchResult))
+		}
+		pipelineInfo(ctx, "Rerank", "named_document_overview", map[string]interface{}{"result_count": len(overview)})
+		return next()
+	}
 	if len(chatManage.SearchResult) == 0 {
 		diag.Outcome = types.RerankOutcomeNoCandidates
 		pipelineInfo(ctx, "Rerank", "skip", map[string]interface{}{

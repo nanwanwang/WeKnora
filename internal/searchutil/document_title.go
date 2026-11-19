@@ -2,6 +2,7 @@ package searchutil
 
 import (
 	"path"
+	"regexp"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -47,6 +48,47 @@ func DocumentTitleHint(query string) (title string, topic bool) {
 		return normalized, true
 	}
 	return "", false
+}
+
+var quotedDocumentTitle = regexp.MustCompile("《([^《》\\r\\n]+)》")
+
+// NamedDocumentOverviewTitles returns distinct filenames in an explicit request
+// for each document's purpose or scope. Detail and comparison requests retain
+// the ordinary retrieval path.
+func NamedDocumentOverviewTitles(query string) []string {
+	tail := quotedDocumentTitle.ReplaceAllString(query, "")
+	overview := false
+	for _, marker := range []string{"分别规定了什么", "分别规定什么", "分别讲了什么", "各自的用途", "各自的主要内容", "各自规定了什么"} {
+		if strings.Contains(tail, marker) {
+			overview = true
+			break
+		}
+	}
+	if !overview {
+		return nil
+	}
+	matches := quotedDocumentTitle.FindAllStringSubmatch(query, 6)
+	if len(matches) < 2 || len(matches) > 5 ||
+		strings.Count(query, "《") != len(matches) || strings.Count(query, "》") != len(matches) {
+		return nil
+	}
+	seen := make(map[string]bool, len(matches))
+	names := make([]string, 0, len(matches))
+	for _, m := range matches {
+		name := NormalizeDocumentTitle(m[1])
+		if !IsTopicQuery(name) {
+			return nil
+		}
+		if seen[name] {
+			continue
+		}
+		seen[name] = true
+		names = append(names, name)
+	}
+	if len(names) < 2 {
+		return nil
+	}
+	return names
 }
 
 // IsBroadTopicQuery avoids spreading a concrete interface, part number, standard

@@ -2,10 +2,11 @@ package service
 
 import (
 	"context"
+	"testing"
+
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 func TestMergeDocumentTitleRecallReservesCandidatesWithoutReplacingBetterHits(t *testing.T) {
@@ -29,16 +30,19 @@ func (*titleAuthKBRepo) GetKnowledgeBaseByIDs(context.Context, []string) ([]*typ
 
 type recordingTitleChunkRepo struct {
 	interfaces.ChunkRepository
-	calls  int
-	scopes []types.KnowledgeSearchScope
-	params types.SearchParams
+	calls    int
+	scopes   []types.KnowledgeSearchScope
+	params   types.SearchParams
+	requests []types.SearchParams
+	hits     map[string][]*types.IndexWithScore
 }
 
 func (r *recordingTitleChunkRepo) SearchDocumentTitleChunks(_ context.Context, scopes []types.KnowledgeSearchScope, params types.SearchParams) ([]*types.IndexWithScore, error) {
 	r.calls++
 	r.scopes = scopes
 	r.params = params
-	return nil, nil
+	r.requests = append(r.requests, params)
+	return r.hits[params.QueryText], nil
 }
 func TestTitleRecallCannotRunBeforeKnowledgeBaseAuthorization(t *testing.T) {
 	chunks := &recordingTitleChunkRepo{}
@@ -59,4 +63,33 @@ func TestTitleRecallPreservesExplicitDocumentAndTagFilters(t *testing.T) {
 	params.DisableKeywordsMatch = true
 	s.recallDocumentTitles(context.Background(), []*types.KnowledgeBase{kb}, params)
 	require.Equal(t, 1, chunks.calls)
+}
+
+func TestNamedDocumentTitleRecallRetainsScopeAndSkipsAmbiguousTitle(t *testing.T) {
+	target := &types.IndexWithScore{
+		ChunkID: "purpose", KnowledgeID: "first", KnowledgeBaseID: "allowed", MatchType: types.MatchTypeDocumentOverview,
+	}
+	repo := &recordingTitleChunkRepo{hits: map[string][]*types.IndexWithScore{
+		"检验标准": {target},
+		"选型规范": {{KnowledgeID: "design-1"}, {KnowledgeID: "design-2"}},
+	}}
+	s := &knowledgeBaseService{chunkRepo: repo}
+	kb := &types.KnowledgeBase{
+		ID: "allowed", TenantID: 7, Type: types.KnowledgeBaseTypeDocument,
+		IndexingStrategy: types.IndexingStrategy{KeywordEnabled: true},
+	}
+	params := types.SearchParams{
+		QueryText: "改写后没有文档标题的查询", EnableTitleMatch: true,
+		NamedOverviewTitles: []string{"检验标准", "选型规范"}, KnowledgeIDs: []string{"first", "design-1", "design-2"},
+		TagIDs: []string{"allowed-tag"}, ScopeTagIDs: []string{"scope-tag"},
+	}
+	got := s.recallDocumentTitles(t.Context(), []*types.KnowledgeBase{kb}, params)
+	require.Equal(t, []*types.IndexWithScore{target}, got)
+	require.Len(t, repo.requests, 2)
+	for i, got := range repo.requests {
+		want := params
+		want.QueryText = params.NamedOverviewTitles[i]
+		require.Equal(t, want, got)
+	}
+	require.Equal(t, []types.KnowledgeSearchScope{{TenantID: 7, KBID: "allowed"}}, repo.scopes)
 }

@@ -2,16 +2,20 @@ package service
 
 import (
 	"context"
+	"slices"
+	"time"
+
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/searchutil"
 	"github.com/Tencent/WeKnora/internal/types"
-	"time"
 )
 
 // Called only after hybridSearchCandidates authorizes every KB for the caller.
 // No tenant-wide document lookup or fallback scope is allowed here.
 func (s *knowledgeBaseService) recallDocumentTitles(ctx context.Context, kbs []*types.KnowledgeBase, params types.SearchParams) []*types.IndexWithScore {
-	if !params.EnableTitleMatch || params.DisableKeywordsMatch || s.chunkRepo == nil || !searchutil.IsTopicQuery(params.QueryText) {
+	titles := params.NamedOverviewTitles
+	if !params.EnableTitleMatch || params.DisableKeywordsMatch || s.chunkRepo == nil ||
+		(len(titles) == 0 && !searchutil.IsTopicQuery(params.QueryText)) {
 		return nil
 	}
 	scopes := make([]types.KnowledgeSearchScope, 0, len(kbs))
@@ -25,6 +29,27 @@ func (s *knowledgeBaseService) recallDocumentTitles(ctx context.Context, kbs []*
 	}
 	titleCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
+	if len(titles) > 0 {
+		results := make([]*types.IndexWithScore, 0, 2*len(titles))
+		for _, title := range titles {
+			scoped := params
+			scoped.QueryText = title
+			hits, err := s.chunkRepo.SearchDocumentTitleChunks(titleCtx, scopes, scoped)
+			if err != nil {
+				logger.Warnf(ctx, "Named document overview recall unavailable: %v", err)
+				continue
+			}
+			// An exact filename can refer to more than one eligible file. In that
+			// case let ordinary retrieval handle it instead of choosing by ID.
+			if len(hits) == 0 || slices.ContainsFunc(hits[1:], func(hit *types.IndexWithScore) bool {
+				return hit.KnowledgeID != hits[0].KnowledgeID || hit.KnowledgeBaseID != hits[0].KnowledgeBaseID
+			}) {
+				continue
+			}
+			results = append(results, hits[:min(2, len(hits))]...)
+		}
+		return results
+	}
 	results, err := s.chunkRepo.SearchDocumentTitleChunks(titleCtx, scopes, params)
 	if err != nil {
 		logger.Warnf(ctx, "Document title recall unavailable; keeping body recall: %v", err)
@@ -64,12 +89,21 @@ func mergeDocumentTitleRecall(body, titles []*types.IndexWithScore, limit int) [
 		}
 	}
 	budget := min(10, max(1, limit/5))
+	if ordered[0].MatchType == types.MatchTypeDocumentOverview {
+		budget = len(titles)
+	}
 	for _, r := range ordered {
 		if len(out) >= budget {
 			break
 		}
 		if old := byID[r.ChunkID]; old != nil && old.Score > r.Score {
-			r = old
+			if r.MatchType == types.MatchTypeDocumentOverview {
+				kept := *old
+				kept.MatchType = r.MatchType
+				r = &kept
+			} else {
+				r = old
+			}
 		}
 		add(r)
 	}
