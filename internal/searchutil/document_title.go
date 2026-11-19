@@ -52,11 +52,17 @@ func DocumentTitleHint(query string) (title string, topic bool) {
 
 var quotedDocumentTitle = regexp.MustCompile(`《([^《》\r\n]+)》`)
 
+// DocumentOverviewQuestionBody omits the quoted titles when matching requested
+// aspects. Terms in the titles themselves do not make the request more specific.
+func DocumentOverviewQuestionBody(query string) string {
+	return quotedDocumentTitle.ReplaceAllString(query, "")
+}
+
 // NamedDocumentOverviewTitles returns distinct filenames in an explicit request
 // for each document's purpose or scope. Detail and comparison requests retain
 // the ordinary retrieval path.
 func NamedDocumentOverviewTitles(query string) []string {
-	tail := quotedDocumentTitle.ReplaceAllString(query, "")
+	tail := DocumentOverviewQuestionBody(query)
 	overview := false
 	for _, marker := range []string{"分别规定了什么", "分别规定什么", "分别讲了什么", "各自的用途", "各自的主要内容", "各自规定了什么"} {
 		if strings.Contains(tail, marker) {

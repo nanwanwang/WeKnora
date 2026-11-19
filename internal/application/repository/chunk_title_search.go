@@ -68,13 +68,12 @@ func (r *chunkRepository) SearchDocumentTitleChunks(ctx context.Context, scopes 
 		Order("title_exact DESC, LENGTH(k.title), k.id").Limit(5)
 	rankExpr := "CASE WHEN " + titleSQL("c.content") + " LIKE ? ESCAPE ? THEN 0 ELSE 1 END"
 	rankArgs := []interface{}{"%" + escapeLikeKeyword(query) + "%", likeEscapeChar}
+	candidatesPerDocument := 3
 	if overview {
-		// Prefer a real purpose section to a cover or table of contents.
-		content := titleSQL("c.content")
-		like := content + " LIKE ?"
-		rankExpr = "CASE WHEN (" + like + " OR " + like + " OR " + like + " OR " + like + " OR " + like + ")" +
-			" AND " + content + " NOT LIKE ? THEN 0 WHEN " + like + " THEN 1 ELSE 2 END"
-		rankArgs = []interface{}{"%#%目的%", "%1.目的%", "%1目的%", "%#%purpose%", "%1.purpose%", "%目录%", "%文件编号%"}
+		// Read a bounded prefix of the matched document so body sections can
+		// outrank cover pages and TOC lines even when they lack the title phrase.
+		rankExpr, rankArgs = "c.chunk_index", nil
+		candidatesPerDocument = namedOverviewCandidatesPerDocument
 	}
 	docJoin := "JOIN (?) AS d ON d.id = c.knowledge_id AND d.tenant_id = c.tenant_id" +
 		" AND d.knowledge_base_id = c.knowledge_base_id"
@@ -82,14 +81,19 @@ func (r *chunkRepository) SearchDocumentTitleChunks(ctx context.Context, scopes 
 		" ROW_NUMBER() OVER (PARTITION BY c.tenant_id,c.knowledge_id" +
 		" ORDER BY " + rankExpr + ", c.chunk_index,c.id) AS title_row"
 	ranked := eligible().Joins(docJoin, docs).Select(selectPassages, rankArgs...)
-	var rows []struct {
-		ID, KnowledgeID, KnowledgeBaseID, Content, TagID string
-		TitleExact                                       int
-		TitleRow                                         int
-	}
-	err := r.db.WithContext(ctx).Table("(?) AS ranked", ranked).Where("title_row <= 3").Order("title_exact DESC, knowledge_id, title_row").Limit(15).Scan(&rows).Error
+	var rows []documentTitlePassage
+	err := r.db.WithContext(ctx).Table("(?) AS ranked", ranked).
+		Where("title_row <= ?", candidatesPerDocument).Order("title_exact DESC, knowledge_id, title_row").
+		Limit(candidatesPerDocument * 5).Scan(&rows).Error
 	if err != nil {
 		return nil, err
+	}
+	if overview && len(rows) > 0 {
+		first, last := rows[0], rows[len(rows)-1]
+		if first.KnowledgeID != last.KnowledgeID || first.KnowledgeBaseID != last.KnowledgeBaseID {
+			return nil, nil // An ambiguous exact title falls back to ordinary recall.
+		}
+		rows = selectNamedOverviewPassages(params.NamedOverviewQuestion, rows)
 	}
 	out := make([]*types.IndexWithScore, 0, len(rows))
 	for _, row := range rows {

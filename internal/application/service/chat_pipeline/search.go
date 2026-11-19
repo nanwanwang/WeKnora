@@ -639,6 +639,7 @@ func (p *PluginSearch) searchByTargets(
 					params := types.SearchParams{
 						EnableTitleMatch:      true,
 						NamedOverviewTitles:   searchutil.NamedDocumentOverviewTitles(chatManage.Query),
+						NamedOverviewQuestion: chatManage.Query,
 						LiteralAll:            usesRecordLookup(chatManage),
 						QueryText:             queryText,
 						QueryEmbedding:        queryEmbedding,
@@ -721,6 +722,7 @@ func (p *PluginSearch) searchSingleTarget(
 	params := types.SearchParams{
 		EnableTitleMatch:      true,
 		NamedOverviewTitles:   searchutil.NamedDocumentOverviewTitles(chatManage.Query),
+		NamedOverviewQuestion: chatManage.Query,
 		LiteralAll:            usesRecordLookup(chatManage),
 		QueryText:             queryText,
 		QueryEmbedding:        queryEmbedding,
