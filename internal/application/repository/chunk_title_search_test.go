@@ -3,11 +3,12 @@ package repository
 import (
 	"context"
 	"fmt"
+	"testing"
+
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
-	"testing"
 )
 
 func TestDocumentTitleRecallIntersectsScopesAndLiveEvidence(t *testing.T) {
@@ -65,6 +66,34 @@ func TestDocumentTitleRecallIntersectsScopesAndLiveEvidence(t *testing.T) {
 		require.Equal(t, map[string]int{"exact": 3, "partial": 3}, counts)
 		require.Equal(t, "exact", got[0].KnowledgeID)
 	}
+	t.Run("named overview uses exact authorized title and prefers purpose", func(t *testing.T) {
+		add("copy", "allowed", "EMC设计(1).pdf", 1)
+		require.NoError(t, db.Exec("UPDATE chunks SET content=? WHERE id='exact-0'", "目录\n1.目的 …… 3").Error)
+		require.NoError(t, db.Exec("UPDATE chunks SET content=? WHERE id='exact-1'", "文件编号 XY-1").Error)
+		require.NoError(t, db.Exec("UPDATE chunks SET content=? WHERE id='exact-4'", "## 1.目的\n规范设计与验收。").Error)
+		params := types.SearchParams{
+			QueryText: "EMC设计", NamedOverviewTitles: []string{"emc设计", "试验规范"}, TagIDs: []string{"tag-a"},
+		}
+		got, err := repo.SearchDocumentTitleChunks(t.Context(), scope, params)
+		require.NoError(t, err)
+		require.Len(t, got, 3)
+		require.Equal(t, "exact-4", got[0].ChunkID)
+		require.Equal(t, "exact-1", got[1].ChunkID)
+		for _, row := range got {
+			require.Equal(t, "exact", row.KnowledgeID)
+			require.Equal(t, types.MatchTypeDocumentOverview, row.MatchType)
+		}
+		params.KnowledgeIDs = []string{"outside"}
+		got, err = repo.SearchDocumentTitleChunks(t.Context(), scope, params)
+		require.NoError(t, err)
+		require.Empty(t, got)
+		// The exact-title path must also respect the caller's document allowlist.
+		params.KnowledgeIDs = []string{"copy"}
+		got, err = repo.SearchDocumentTitleChunks(t.Context(), scope, params)
+		require.NoError(t, err)
+		require.Empty(t, got)
+		require.NoError(t, db.Exec("UPDATE chunks SET is_enabled=false WHERE knowledge_id='copy'").Error)
+	})
 	cases := []struct {
 		name   string
 		scope  []types.KnowledgeSearchScope

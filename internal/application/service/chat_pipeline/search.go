@@ -180,8 +180,11 @@ func getSearchResultFromHistory(chatManage *types.ChatManage) []*types.SearchRes
 	return nil
 }
 
-// Policy questions need separate evidence when multiple files use the same template.
+// Policy questions and named overviews need separate evidence for each document.
 func preservePolicyDocuments(chat *types.ChatManage) bool {
+	if len(searchutil.NamedDocumentOverviewTitles(chat.Query)) > 0 {
+		return true
+	}
 	if value := searchutil.LiteralLookup(chat.Query); value != "" {
 		for _, hit := range chat.SearchResult {
 			if hit != nil && hit.MatchType == types.MatchTypeLiteral {
@@ -635,6 +638,7 @@ func (p *PluginSearch) searchByTargets(
 
 					params := types.SearchParams{
 						EnableTitleMatch:      true,
+						NamedOverviewTitles:   searchutil.NamedDocumentOverviewTitles(chatManage.Query),
 						LiteralAll:            usesRecordLookup(chatManage),
 						QueryText:             queryText,
 						QueryEmbedding:        queryEmbedding,
@@ -716,6 +720,7 @@ func (p *PluginSearch) searchSingleTarget(
 	}
 	params := types.SearchParams{
 		EnableTitleMatch:      true,
+		NamedOverviewTitles:   searchutil.NamedDocumentOverviewTitles(chatManage.Query),
 		LiteralAll:            usesRecordLookup(chatManage),
 		QueryText:             queryText,
 		QueryEmbedding:        queryEmbedding,

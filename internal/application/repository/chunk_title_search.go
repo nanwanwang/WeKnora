@@ -25,6 +25,7 @@ func (r *chunkRepository) SearchDocumentTitleChunks(ctx context.Context, scopes 
 		return nil, nil
 	}
 	query := searchutil.NormalizeDocumentTitle(params.QueryText)
+	overview := len(params.NamedOverviewTitles) > 0
 	exactNames := []string{query}
 	for _, ext := range []string{".pdf", ".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx", ".txt", ".md"} {
 		exactNames = append(exactNames, query+ext)
@@ -54,15 +55,33 @@ func (r *chunkRepository) SearchDocumentTitleChunks(ctx context.Context, scopes 
 		Joins("JOIN knowledge_bases AS kb ON kb.id = k.knowledge_base_id AND kb.tenant_id = k.tenant_id").
 		Where("("+strings.Join(pairs, " OR ")+")", args...).
 		Where("kb.deleted_at IS NULL AND kb.type = ? AND k.deleted_at IS NULL AND k.enable_status = ? AND k.parse_status = ?", types.KnowledgeBaseTypeDocument, "enabled", "completed").
-		Where(titleSQL("k.title")+" LIKE ? ESCAPE ?", "%"+escapeLikeKeyword(query)+"%", likeEscapeChar).
 		Where("EXISTS (?)", eligible().Select("1").Where("c.knowledge_id = k.id AND c.tenant_id = k.tenant_id AND c.knowledge_base_id = k.knowledge_base_id"))
+	if overview {
+		docs = docs.Where(titleSQL("k.title")+" IN ?", exactNames)
+	} else {
+		docs = docs.Where(titleSQL("k.title")+" LIKE ? ESCAPE ?", "%"+escapeLikeKeyword(query)+"%", likeEscapeChar)
+	}
 	if len(params.KnowledgeIDs) > 0 {
 		docs = docs.Where("k.id IN ?", params.KnowledgeIDs)
 	}
 	docs = docs.Select("k.id, k.tenant_id, k.knowledge_base_id, CASE WHEN "+titleSQL("k.title")+" IN ? THEN 1 ELSE 0 END AS title_exact", exactNames).
 		Order("title_exact DESC, LENGTH(k.title), k.id").Limit(5)
-	ranked := eligible().Joins("JOIN (?) AS d ON d.id = c.knowledge_id AND d.tenant_id = c.tenant_id AND d.knowledge_base_id = c.knowledge_base_id", docs).
-		Select("c.id, c.knowledge_id, c.knowledge_base_id, c.content, c.tag_id, d.title_exact, ROW_NUMBER() OVER (PARTITION BY c.tenant_id,c.knowledge_id ORDER BY CASE WHEN "+titleSQL("c.content")+" LIKE ? ESCAPE ? THEN 0 ELSE 1 END, c.chunk_index,c.id) AS title_row", "%"+escapeLikeKeyword(query)+"%", likeEscapeChar)
+	rankExpr := "CASE WHEN " + titleSQL("c.content") + " LIKE ? ESCAPE ? THEN 0 ELSE 1 END"
+	rankArgs := []interface{}{"%" + escapeLikeKeyword(query) + "%", likeEscapeChar}
+	if overview {
+		// Prefer a real purpose section to a cover or table of contents.
+		content := titleSQL("c.content")
+		like := content + " LIKE ?"
+		rankExpr = "CASE WHEN (" + like + " OR " + like + " OR " + like + " OR " + like + " OR " + like + ")" +
+			" AND " + content + " NOT LIKE ? THEN 0 WHEN " + like + " THEN 1 ELSE 2 END"
+		rankArgs = []interface{}{"%#%目的%", "%1.目的%", "%1目的%", "%#%purpose%", "%1.purpose%", "%目录%", "%文件编号%"}
+	}
+	docJoin := "JOIN (?) AS d ON d.id = c.knowledge_id AND d.tenant_id = c.tenant_id" +
+		" AND d.knowledge_base_id = c.knowledge_base_id"
+	selectPassages := "c.id, c.knowledge_id, c.knowledge_base_id, c.content, c.tag_id, d.title_exact," +
+		" ROW_NUMBER() OVER (PARTITION BY c.tenant_id,c.knowledge_id" +
+		" ORDER BY " + rankExpr + ", c.chunk_index,c.id) AS title_row"
+	ranked := eligible().Joins(docJoin, docs).Select(selectPassages, rankArgs...)
 	var rows []struct {
 		ID, KnowledgeID, KnowledgeBaseID, Content, TagID string
 		TitleExact                                       int
@@ -78,7 +97,15 @@ func (r *chunkRepository) SearchDocumentTitleChunks(ctx context.Context, scopes 
 		if row.TitleExact == 1 {
 			score = 0.7
 		}
-		out = append(out, &types.IndexWithScore{ID: row.ID, ChunkID: row.ID, SourceID: row.ID, SourceType: types.ChunkSourceType, KnowledgeID: row.KnowledgeID, KnowledgeBaseID: row.KnowledgeBaseID, TagID: row.TagID, Content: row.Content, Score: score, MatchType: types.MatchTypeKeywords, IsEnabled: true})
+		match := types.MatchTypeKeywords
+		if overview {
+			match = types.MatchTypeDocumentOverview
+		}
+		out = append(out, &types.IndexWithScore{
+			ID: row.ID, ChunkID: row.ID, SourceID: row.ID, SourceType: types.ChunkSourceType,
+			KnowledgeID: row.KnowledgeID, KnowledgeBaseID: row.KnowledgeBaseID, TagID: row.TagID,
+			Content: row.Content, Score: score, MatchType: match, IsEnabled: true,
+		})
 	}
 	return out, nil
 }
