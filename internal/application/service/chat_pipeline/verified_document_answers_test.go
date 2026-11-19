@@ -8,10 +8,14 @@ import (
 )
 
 func TestInferredAcceptanceDifferenceRequiresSameIdentifierAndLimit(t *testing.T) {
-	first := reviewSource{document: "original", ref: "source-one",
-		body: "AA-1/B7/CT 表示钢件钝化，镀层最小厚度为 7 μm，种类为蓝白镀层。"}
-	second := reviewSource{document: "original", ref: "source-two",
-		body: "AA-1/B7/CT 为蓝白镀层，最小厚度要求为 4 μ m。"}
+	first := reviewSource{
+		document: "original", ref: "source-one",
+		body: "AA-1/B7/CT 表示钢件钝化，镀层最小厚度为 7 μm，种类为蓝白镀层。",
+	}
+	second := reviewSource{
+		document: "original", ref: "source-two",
+		body: "AA-1/B7/CT 为蓝白镀层，最小厚度要求为 4 μ m。",
+	}
 	question := "钢件蓝白镀层的最小厚度到底按多少验收？"
 	proof := inferredAcceptanceDifference(question, []reviewSource{first, second})
 	require.Len(t, proof.excerpts, 2)
@@ -30,21 +34,33 @@ func TestVerifiedTorqueRequiresOneTableRegionAndKeepsConditions(t *testing.T) {
 		return types.SourceLocators{{Type: types.SourceLocatorPDF, Page: 5, SourceID: id}}
 	}
 	sources := []reviewSource{
-		{document: "doc", title: "母排规范.pdf", ref: "scope", locators: location("scope"),
-			body: "Gleichstrom und für Wechselstrom bis 70 Hz."},
-		{document: "doc", title: "母排规范.pdf", ref: "header", locators: location("table"),
-			body: "<tr><td>Tabelle 4.</td><td>Innenraum</td><td>Innenraum und Freiluft</td></tr>"},
-		{document: "doc", title: "母排规范.pdf", ref: "washers", locators: location("table"),
-			body: "Bei Gewinde M 8 und Stromschienen aus G-X sind zusätzliche Scheiben erforderlich."},
-		{document: "doc", title: "母排规范.pdf", ref: "different-table", locators: location("another-table"),
-			body: "<tr><td>M 8</td><td>10</td><td>14</td></tr>"},
-		{document: "doc", title: "母排规范.pdf", ref: "row", locators: location("table"),
-			body: "<tr><td>M 8</td><td>11</td><td>17</td></tr>"},
+		{
+			document: "doc", title: "母排规范.pdf", ref: "scope", locators: location("scope"),
+			body: "Gleichstrom und für Wechselstrom bis 70 Hz.",
+		},
+		{
+			document: "doc", title: "母排规范.pdf", ref: "header", locators: location("table"),
+			body: "<tr><td>Tabelle 4.</td><td>Innenraum</td><td>Innenraum und Freiluft</td></tr>",
+		},
+		{
+			document: "doc", title: "母排规范.pdf", ref: "washers", locators: location("table"),
+			body: "Bei Gewinde M 8 und Stromschienen aus G-X sind zusätzliche Scheiben erforderlich.",
+		},
+		{
+			document: "doc", title: "母排规范.pdf", ref: "different-table", locators: location("another-table"),
+			body: "<tr><td>M 8</td><td>10</td><td>14</td></tr>",
+		},
+		{
+			document: "doc", title: "母排规范.pdf", ref: "row", locators: location("table"),
+			body: "<tr><td>M 8</td><td>11</td><td>17</td></tr>",
+		},
 	}
 	question := "《母排规范》母排螺栓拧紧力矩是多少？"
 	got := renderVerifiedTorque(question, sources)
-	for _, want := range []string{"直流和不超过 70 Hz 的交流", "室内 11 N·m，室内和露天 17 N·m",
-		"额外垫圈限于螺纹 M8", "scope", "washers", "row"} {
+	for _, want := range []string{
+		"直流和不超过 70 Hz 的交流", "室内 11 N·m，室内和露天 17 N·m",
+		"额外垫圈限于螺纹 M8", "scope", "washers", "row",
+	} {
 		require.Contains(t, got, want)
 	}
 	require.NotContains(t, got, "及以上")

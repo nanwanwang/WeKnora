@@ -87,7 +87,8 @@ func inferredAcceptanceDifference(query string, sources []reviewSource) evidence
 // the same table region of one explicitly named source. The preceding scope
 // paragraph can have a separate locator on the same page.
 func renderVerifiedTorque(query string, sources []reviewSource) string {
-	if !verifiedTorqueQuery.MatchString(query) || !(strings.Contains(query, "力矩") || strings.Contains(query, "扭矩")) {
+	asksTorque := strings.Contains(query, "力矩") || strings.Contains(query, "扭矩")
+	if !verifiedTorqueQuery.MatchString(query) || !asksTorque {
 		return ""
 	}
 	title, _ := searchutil.DocumentTitleHint(query)
