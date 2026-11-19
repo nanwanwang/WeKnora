@@ -70,7 +70,8 @@ func TestDocumentTitleRecallIntersectsScopesAndLiveEvidence(t *testing.T) {
 		}
 		require.NoError(t, db.Exec("UPDATE chunks SET content=? WHERE id=?",
 			"储存稳定性 …… 12", "storage-0").Error)
-		p := types.SearchParams{QueryText: "gbt1000.2-2024",
+		p := types.SearchParams{
+			QueryText:           "gbt1000.2-2024",
 			NamedOverviewTitles: []string{"gbt1000.2-2024", "试剂规范"},
 			NamedOverviewQuestion: "按 GB/T 1000.2-2024，恢复方法与时间由谁规定？" +
 				"按《试剂规范》，储存稳定性如何判定？",
