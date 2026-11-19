@@ -52,7 +52,7 @@ func applyMinerUPDFTableCorrections(req *types.ReadRequest, result *types.ReadRe
 	if err != nil {
 		return fmt.Errorf("open MinerU PDF table corrections: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	payload, err := io.ReadAll(io.LimitReader(file, maxTableCorrectionsBytes+1))
 	if err != nil {
 		return fmt.Errorf("read MinerU PDF table corrections: %w", err)
@@ -83,7 +83,9 @@ func applyMinerUPDFTableCorrections(req *types.ReadRequest, result *types.ReadRe
 	return applyMinerUTableEdits(result, edits)
 }
 
-func (c minerUTableCorrection) findEdit(markdown string, tables, fences [][]int, sources []types.SourceBlock) (minerUTableEdit, error) {
+func (c minerUTableCorrection) findEdit(
+	markdown string, tables, fences [][]int, sources []types.SourceBlock,
+) (minerUTableEdit, error) {
 	var edit minerUTableEdit
 	if c.Page < 1 || !validCorrectionBBox(c.BBox) || len(c.MatchText) == 0 {
 		return edit, fmt.Errorf("expected a PDF page, normalized bounding box and table markers")

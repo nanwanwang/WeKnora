@@ -16,23 +16,25 @@ import (
 
 func marshalCorrectionFixture(t *testing.T, fixture any) []byte {
 	t.Helper()
+
 	data, err := json.Marshal(fixture)
 	require.NoError(t, err)
 	return data
 }
 
-const correctionHeader = `<table><thead>
-<tr><th rowspan="2">PARAMETER</th><th rowspan="2">TEST CONDITIONS</th><th colspan="3">TL284xB</th><th colspan="3">TL384xB</th><th rowspan="2">UNIT</th></tr>
+const (
+	correctionHeader = `<table><thead>
+<tr><th rowspan="2">PARAMETER</th><th rowspan="2">TEST CONDITIONS</th>
+<th colspan="3">TL284xB</th><th colspan="3">TL384xB</th><th rowspan="2">UNIT</th></tr>
 <tr><th>MIN</th><th>TYP</th><th>MAX</th><th>MIN</th><th>TYP</th><th>MAX</th></tr></thead><tbody>
 `
-
-const (
 	reversedOscillator = `<table><tr><td>tnerr uc egrahcsiD</td><td>8.8 3.8 8.7</td></tr></table>`
 	reversedReference  = `<table><tr><td>noitairav esac-tsrow</td><td>81.5 28.4</td></tr></table>`
 )
 
 func writeMinerUTableCorrections(t *testing.T, pdf []byte, corrections ...minerUTableCorrection) string {
 	t.Helper()
+
 	directory := t.TempDir()
 	path := filepath.Join(directory, fmt.Sprintf("%x.json", sha256.Sum256(pdf)))
 	require.NoError(t, os.WriteFile(path, marshalCorrectionFixture(t, corrections), 0600))
@@ -45,13 +47,17 @@ func TestMinerUPDFTableCorrectionsTIRegressions(t *testing.T) {
 	oscBox, refBox := []float64{0.1, 0.4, 0.9, 0.6}, []float64{0.1, 0.1, 0.9, 0.3}
 	writeMinerUTableCorrections(t, pdf,
 		minerUTableCorrection{Page: 5, MatchText: []string{"discharge current", "tnerrucegrahcsid"}, BBox: oscBox,
-			HTML: correctionHeader + `<tr><td>Discharge current</td><td>TJ = 25°C, RT/CT = 2 V</td><td>7.8</td><td>8.3</td><td>8.8</td><td>7.8</td><td>8.3</td><td>8.8</td><td>mA</td></tr>
-<tr><td>Discharge current</td><td>RT/CT = 2 V</td><td>7.5</td><td></td><td>8.8</td><td>7.6</td><td></td><td>8.8</td><td>mA</td></tr>
-</tbody></table>`},
+			HTML: correctionHeader +
+				"<tr><td>Discharge current</td><td>TJ = 25°C, RT/CT = 2 V</td>" +
+				"<td>7.8</td><td>8.3</td><td>8.8</td><td>7.8</td><td>8.3</td><td>8.8</td><td>mA</td></tr>\n" +
+				"<tr><td>Discharge current</td><td>RT/CT = 2 V</td>" +
+				"<td>7.5</td><td></td><td>8.8</td><td>7.6</td><td></td><td>8.8</td><td>mA</td></tr>\n</tbody></table>"},
 		minerUTableCorrection{Page: 5, MatchText: []string{"noitairavesactsrow"}, BBox: refBox,
-			HTML: correctionHeader + `<tr><td>Output voltage</td><td>IO = 1 mA, TJ = 25°C</td><td>4.95</td><td>5</td><td>5.05</td><td>4.9</td><td>5</td><td>5.1</td><td>V</td></tr>
-<tr><td>Output voltage, worst-case variation</td><td>VCC = 12 V to 25 V, IO = 1 mA to 20 mA</td><td>4.9</td><td></td><td>5.1</td><td>4.82</td><td></td><td>5.18</td><td>V</td></tr>
-</tbody></table>`})
+			HTML: correctionHeader +
+				"<tr><td>Output voltage</td><td>IO = 1 mA, TJ = 25°C</td>" +
+				"<td>4.95</td><td>5</td><td>5.05</td><td>4.9</td><td>5</td><td>5.1</td><td>V</td></tr>\n" +
+				"<tr><td>Output voltage, worst-case variation</td><td>VCC = 12 V to 25 V, IO = 1 mA to 20 mA</td>" +
+				"<td>4.9</td><td></td><td>5.1</td><td>4.82</td><td></td><td>5.18</td><td>V</td></tr>\n</tbody></table>"})
 	const prefix, suffix = "手册前文\n\n", "\n\n下一页内容"
 	// The reference table is broken badly enough that MinerU missed its
 	// locator. The manifest supplies the verified source location for it.
@@ -84,10 +90,22 @@ func TestMinerUPDFTableCorrectionsTIRegressions(t *testing.T) {
 		box                              []float64
 		values                           []string
 	}{
-		{"N278", "Discharge current", "TJ = 25°C, RT/CT = 2 V", "mA", 1, oscBox, []string{"7.8", "8.3", "8.8", "7.8", "8.3", "8.8"}},
-		{"N278 adjacent RT/CT row", "Discharge current", "RT/CT = 2 V", "mA", 1, oscBox, []string{"7.5", "", "8.8", "7.6", "", "8.8"}},
-		{"N281", "Output voltage, worst-case variation", "VCC = 12 V to 25 V, IO = 1 mA to 20 mA", "V", 2, refBox, []string{"4.9", "", "5.1", "4.82", "", "5.18"}},
-		{"N281 adjacent nominal row", "Output voltage", "IO = 1 mA, TJ = 25°C", "V", 2, refBox, []string{"4.95", "5", "5.05", "4.9", "5", "5.1"}},
+		{
+			"N278", "Discharge current", "TJ = 25°C, RT/CT = 2 V", "mA",
+			1, oscBox, []string{"7.8", "8.3", "8.8", "7.8", "8.3", "8.8"},
+		},
+		{
+			"N278 adjacent RT/CT row", "Discharge current", "RT/CT = 2 V", "mA",
+			1, oscBox, []string{"7.5", "", "8.8", "7.6", "", "8.8"},
+		},
+		{
+			"N281", "Output voltage, worst-case variation", "VCC = 12 V to 25 V, IO = 1 mA to 20 mA", "V",
+			2, refBox, []string{"4.9", "", "5.1", "4.82", "", "5.18"},
+		},
+		{
+			"N281 adjacent nominal row", "Output voltage", "IO = 1 mA, TJ = 25°C", "V",
+			2, refBox, []string{"4.95", "5", "5.05", "4.9", "5", "5.1"},
+		},
 	}
 	for _, spec := range specs {
 		t.Run(spec.name, func(t *testing.T) {
@@ -110,7 +128,10 @@ func TestMinerUPDFTableCorrectionsRequireExactScope(t *testing.T) {
 		MatchText: []string{"tnerrucegrahcsid"}, HTML: "<table><tr><td>Discharge current</td></tr></table>",
 	})
 	req := &types.ReadRequest{FileType: ".PDF", FileContent: pdf}
-	wrongPage := marshalCorrectionFixture(t, []map[string]any{{"type": "table", "table_body": reversedOscillator, "page_idx": 5}})
+	wrongPage := marshalCorrectionFixture(t, []map[string]any{
+		{"type": "table", "table_body": reversedOscillator, "page_idx": 5},
+	})
+	const fence = "\x60\x60\x60"
 	for _, test := range []struct {
 		markdown string
 		layout   []byte
@@ -119,7 +140,7 @@ func TestMinerUPDFTableCorrectionsRequireExactScope(t *testing.T) {
 		{reversedOscillator, wrongPage, "no table with the expected markers and page"},
 		{reversedOscillator + "\n\n" + reversedOscillator, nil, "match multiple tables"},
 		{"unrelated content", nil, "no table with the expected markers and page"},
-		{"\x60\x60\x60html\n" + reversedOscillator + "\n\x60\x60\x60", nil, "no table with the expected markers and page"},
+		{fence + "html\n" + reversedOscillator + "\n" + fence, nil, "no table with the expected markers and page"},
 	} {
 		got, err := finishMinerURead(req, test.markdown, nil, test.layout)
 		require.ErrorContains(t, err, test.message)

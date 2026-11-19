@@ -170,7 +170,9 @@ func (c *MinerUReader) readV1(
 	return finishMinerURead(req, mdContent, imageRefs, contentList)
 }
 
-func finishMinerURead(req *types.ReadRequest, mdContent string, imageRefs []types.ImageRef, contentList []byte) (*types.ReadResult, error) {
+func finishMinerURead(
+	req *types.ReadRequest, mdContent string, imageRefs []types.ImageRef, contentList []byte,
+) (*types.ReadResult, error) {
 	result := &types.ReadResult{
 		MarkdownContent: mdContent,
 		ImageRefs:       imageRefs,
