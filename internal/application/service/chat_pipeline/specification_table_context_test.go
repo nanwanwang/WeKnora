@@ -12,8 +12,10 @@ import (
 
 const recommendedFrequency = `<tr><td colspan="2">Oscillator Frequency</td><td>fosc</td>` +
 	`<td>--</td><td>100</td><td>500</td><td>kHz</td></tr>`
+
 const initialFrequency = `<tr><td colspan="7">Oscillator Section</td></tr>
 <tr><td>Initial Accurcy</td><td>f</td><td>Ta=25°C</td><td>49</td><td>52</td><td>55</td><td>kHz</td></tr>`
+
 const voltageStability = `<tr><td>Voltage stability</td><td>∆f/∆VCC</td><td>VCC=12V~25V</td>` +
 	`<td>--</td><td>0.2</td><td>1</td><td>%</td></tr>`
 
@@ -34,8 +36,10 @@ func TestSplitSpecificationRowsReachModelWithTheirOwnTableContexts(t *testing.T)
 	const document = "455ee6c2-5d84-4fbf-b919-d4012f82339c"
 	const library = "4bb3dee1-638f-4b1c-81e7-6848a7e0d976"
 	candidate := func(id, text string, index int) *types.Chunk {
-		return &types.Chunk{ID: id, KnowledgeID: document, KnowledgeBaseID: library, ParentChunkID: "parent",
-			IsEnabled: true, ChunkType: types.ChunkTypeText, Content: text, ChunkIndex: index}
+		return &types.Chunk{
+			ID: id, KnowledgeID: document, KnowledgeBaseID: library, ParentChunkID: "parent",
+			IsEnabled: true, ChunkType: types.ChunkTypeText, Content: text, ChunkIndex: index,
+		}
 	}
 	recommended := candidate("331da8b6-2825-4ed2-9aa9-72628055486f", recommendedFrequency, 1)
 	accuracy := candidate("98420a87-7950-4a29-aa32-46b68e03912e", initialFrequency, 2)
@@ -45,8 +49,10 @@ func TestSplitSpecificationRowsReachModelWithTheirOwnTableContexts(t *testing.T)
 		children: map[string][]*types.Chunk{"parent": {recommended, accuracy, stability}},
 	}
 	merger := &PluginMerge{chunkRepo: repo}
-	merged := &types.SearchResult{ID: recommended.ID, KnowledgeID: document, KnowledgeBaseID: library,
-		ContentRewritten: true, Content: mergedOscillatorTables}
+	merged := &types.SearchResult{
+		ID: recommended.ID, KnowledgeID: document, KnowledgeBaseID: library,
+		ContentRewritten: true, Content: mergedOscillatorTables,
+	}
 	merger.attachCitationSources(context.Background(), []*types.SearchResult{merged})
 	evidence := expandCitationSources([]*types.SearchResult{merged})
 	require.Len(t, evidence, 3)
