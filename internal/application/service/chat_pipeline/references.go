@@ -133,6 +133,7 @@ func prepareMessagesWithModelContext(
 		ids := chatManage.ContextImageChunkIDs[:count]
 		messages[last].Content += registry.ImageSourcesNote(ids, len(chatManage.Images))
 	}
+	messages[0].Content += documentAnswerInstructions(ctx, chatManage, knowledgeResults)
 	return messages, registry
 }
 
