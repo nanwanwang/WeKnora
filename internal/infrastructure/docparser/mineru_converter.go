@@ -144,11 +144,7 @@ func (c *MinerUReader) Read(ctx context.Context, req *types.ReadRequest) (*types
 
 	logger.Infof(context.Background(), "[MinerU] Parsed successfully, markdown=%d chars, images=%d", len(mdContent), len(imageRefs))
 
-	return &types.ReadResult{
-		MarkdownContent: mdContent,
-		ImageRefs:       imageRefs,
-		SourceBlocks:    minerUSourceBlocks(mdContent, contentList, req.FileType),
-	}, nil
+	return finishMinerURead(req, mdContent, imageRefs, contentList)
 }
 
 func (c *MinerUReader) readV1(
@@ -171,11 +167,21 @@ func (c *MinerUReader) readV1(
 
 	logger.Infof(ctx, "[MinerU] Parsed successfully (V1), markdown=%d chars, images=%d", len(mdContent), len(imageRefs))
 
-	return &types.ReadResult{
+	return finishMinerURead(req, mdContent, imageRefs, contentList)
+}
+
+func finishMinerURead(
+	req *types.ReadRequest, mdContent string, imageRefs []types.ImageRef, contentList []byte,
+) (*types.ReadResult, error) {
+	result := &types.ReadResult{
 		MarkdownContent: mdContent,
 		ImageRefs:       imageRefs,
 		SourceBlocks:    minerUSourceBlocks(mdContent, contentList, req.FileType),
-	}, nil
+	}
+	if err := applyMinerUPDFTableCorrections(req, result); err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 type mineruFileEntry struct {

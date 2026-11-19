@@ -520,6 +520,33 @@ V1 流程的几个细节：
 - 上传时附带 `sha256sum`，服务端已有相同文件时直接复用，不再传字节。
 - 只有 `upload_url` 与 `mineru_endpoint` 同源（scheme、host、端口都相同）时才附带 API Key；跨源地址（如官方 API 下发的预签名对象存储 URL）不带 Key，并照常经过 SSRF 校验。
 - 轮询从 2 秒开始指数退避，最长 30 秒一次；总时长与旧版一样默认 1000 秒，可用 `WEKNORA_MINERU_TIMEOUT` 调整。超时或调用方取消时，会发 `DELETE /v1/parse/jobs/{id}` 取消服务端任务。
+
+#### 校正已核对的 PDF 表格
+
+自建 MinerU 的输出有时会把表格列合并、倒序或漏掉空单元格。可在 WeKnora App 进程中设置
+`WEKNORA_MINERU_PDF_TABLE_CORRECTIONS_DIR`，指向只读的本地配置目录。Docker 部署需要把目录
+挂载到 App 容器并在该容器中设置环境变量。变量留空时按常规流程解析。
+
+每份 PDF 的校正文件名为 `<原始 PDF 字节的 SHA-256 小写十六进制字符串>.json`。文件内容是表格数组。
+没有对应文件的 PDF 按常规流程解析。
+
+```json
+[
+  {
+    "page": 5,
+    "match_text": ["unique parsed table text", "alternate parser spelling"],
+    "bbox": [0.1, 0.2, 0.9, 0.4],
+    "html": "<table><tr><th>MIN</th><th>TYP</th><th>MAX</th></tr><tr><td>1</td><td></td><td>3</td></tr></table>"
+  }
+]
+```
+
+- `match_text` 中的任一标记可识别目标表格。匹配时忽略大小写、空格和标点。选用只在该表格出现的文本。
+- `page` 从 1 开始。`bbox` 是原 PDF 页面内按左上、右下角排列的坐标，按页宽和页高归一化到 0–1。
+- `html` 使用经原文核对的单张表格。保留 `rowspan`、`colspan` 及空单元格，表内只使用表格结构标签、这两种属性和文本。
+- 单份配置上限为 1 MiB。命中 PDF 指纹后，配置无效、找不到目标表格、出现歧义或与已识别的页码冲突时，该次解析报错。
+
+将校正文件放到应用可读的位置后，只需重新解析目标文档。引用仍打开原 PDF 的指定页和区域。校正文件应独立保管，便于日后重建同一索引。
 - MinerU V1 服务的上传、任务状态都存在进程内存里，服务重启后正在轮询的任务会返回 404，本次解析直接失败。
 - 「测试连接」在 V1 服务上额外请求一次需要鉴权的 `GET /v1/parse/jobs?limit=1`，用来发现 API Key 缺失或错误（`/v1/health` 本身不校验 Key）。
 
