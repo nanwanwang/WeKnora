@@ -182,7 +182,7 @@ func getSearchResultFromHistory(chatManage *types.ChatManage) []*types.SearchRes
 
 // Policy questions and named overviews need separate evidence for each document.
 func preservePolicyDocuments(chat *types.ChatManage) bool {
-	if len(searchutil.NamedDocumentOverviewTitles(chat.Query)) > 0 {
+	if len(searchutil.RequestedEvidenceTitles(chat.Query)) > 0 {
 		return true
 	}
 	if value := searchutil.LiteralLookup(chat.Query); value != "" {
@@ -638,7 +638,7 @@ func (p *PluginSearch) searchByTargets(
 
 					params := types.SearchParams{
 						EnableTitleMatch:      true,
-						NamedOverviewTitles:   searchutil.NamedDocumentOverviewTitles(chatManage.Query),
+						NamedOverviewTitles:   searchutil.RequestedEvidenceTitles(chatManage.Query),
 						NamedOverviewQuestion: chatManage.Query,
 						LiteralAll:            usesRecordLookup(chatManage),
 						QueryText:             queryText,
@@ -721,7 +721,7 @@ func (p *PluginSearch) searchSingleTarget(
 	}
 	params := types.SearchParams{
 		EnableTitleMatch:      true,
-		NamedOverviewTitles:   searchutil.NamedDocumentOverviewTitles(chatManage.Query),
+		NamedOverviewTitles:   searchutil.RequestedEvidenceTitles(chatManage.Query),
 		NamedOverviewQuestion: chatManage.Query,
 		LiteralAll:            usesRecordLookup(chatManage),
 		QueryText:             queryText,

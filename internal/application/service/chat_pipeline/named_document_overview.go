@@ -1,8 +1,6 @@
 package chatpipeline
 
 import (
-	"slices"
-
 	"github.com/Tencent/WeKnora/internal/searchutil"
 	"github.com/Tencent/WeKnora/internal/types"
 )
@@ -11,7 +9,7 @@ import (
 // every exact document before filling the budget with supporting passages.
 // If any document could not be resolved, use ordinary ranked retrieval.
 func namedOverviewSources(query string, results []*types.SearchResult, limit int) []*types.SearchResult {
-	titles := searchutil.NamedDocumentOverviewTitles(query)
+	titles := searchutil.RequestedEvidenceTitles(query)
 	if len(titles) == 0 || (limit > 0 && limit < len(titles)) {
 		return nil
 	}
@@ -21,16 +19,18 @@ func namedOverviewSources(query string, results []*types.SearchResult, limit int
 			hit.KnowledgeID == "" || hit.Content == "" {
 			continue
 		}
-		title := searchutil.NormalizeDocumentTitle(hit.KnowledgeTitle)
-		if !slices.Contains(titles, title) {
-			continue
+		for _, title := range titles {
+			if !searchutil.MatchesEvidenceDocument(title, hit.KnowledgeTitle) {
+				continue
+			}
+			group := grouped[title]
+			if len(group) > 0 && (group[0].KnowledgeID != hit.KnowledgeID ||
+				group[0].KnowledgeBaseID != hit.KnowledgeBaseID) {
+				return nil
+			}
+			grouped[title] = append(group, hit)
+			break
 		}
-		group := grouped[title]
-		if len(group) > 0 && (group[0].KnowledgeID != hit.KnowledgeID ||
-			group[0].KnowledgeBaseID != hit.KnowledgeBaseID) {
-			return nil
-		}
-		grouped[title] = append(group, hit)
 	}
 	ordered := make([]*types.SearchResult, 0, 3*len(titles))
 	for _, title := range titles {

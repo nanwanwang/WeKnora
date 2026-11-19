@@ -2,7 +2,9 @@ package repository
 
 import (
 	"regexp"
+	"sort"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/Tencent/WeKnora/internal/searchutil"
@@ -10,12 +12,53 @@ import (
 
 const (
 	namedOverviewCandidatesPerDocument = 32
+	namedDetailCandidatesPerDocument   = 128
 	namedOverviewPassagesPerDocument   = 3
 )
 
 type documentTitlePassage struct {
-	ID, KnowledgeID, KnowledgeBaseID, Content, TagID string
-	TitleExact                                       int
+	ID, KnowledgeID, KnowledgeBaseID, Content, TagID, Title string
+	TitleExact                                              int
+}
+
+// Rank a bounded set of passages from one resolved document by wording shared
+// with its own subquestion. A cover or TOC alone is insufficient.
+func selectDocumentDetailPassages(question string, passages []documentTitlePassage) []documentTitlePassage {
+	grams := make(map[string]int)
+	for _, phrase := range strings.FieldsFunc(strings.ToLower(question), func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsNumber(r)
+	}) {
+		chars := []rune(phrase)
+		for width := 3; width <= min(7, len(chars)); width++ {
+			for start := 0; start+width <= len(chars); start++ {
+				grams[string(chars[start:start+width])] = width * width
+			}
+		}
+	}
+	type ranked struct {
+		row   documentTitlePassage
+		score int
+	}
+	var candidates []ranked
+	for _, row := range passages {
+		lines := overviewBodyLines(row.Content)
+		body := strings.Join(strings.Fields(strings.ToLower(strings.Join(lines, " "))), "")
+		score := 0
+		for term, weight := range grams {
+			if strings.Contains(body, term) {
+				score += weight
+			}
+		}
+		if score > 0 {
+			candidates = append(candidates, ranked{row, score})
+		}
+	}
+	sort.SliceStable(candidates, func(i, j int) bool { return candidates[i].score > candidates[j].score })
+	out := make([]documentTitlePassage, min(len(candidates), namedOverviewPassagesPerDocument))
+	for i := range out {
+		out[i] = candidates[i].row
+	}
+	return out
 }
 
 var (

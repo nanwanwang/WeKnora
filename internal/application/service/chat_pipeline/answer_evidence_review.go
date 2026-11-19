@@ -23,9 +23,10 @@ type reviewSource struct {
 }
 
 type answerEvidenceReview struct {
-	pending string
-	rows    []evidenceRuleRow
-	han     bool
+	pending       string
+	rows          []evidenceRuleRow
+	documentCodes []verifiedDocumentCode
+	han           bool
 }
 
 type evidenceRuleRow struct {
@@ -75,6 +76,7 @@ func reviewAnswerEvidence(request *types.ChatManage, registry *modelcontext.Regi
 		review.pending = answer
 		return review
 	}
+	review.documentCodes = verifiedNamedDocumentCodes(query, sources, registry)
 	for _, source := range sources {
 		if source.imageOCR {
 			continue
@@ -115,10 +117,17 @@ func distinctComparisons(comparisons []evidenceComparison) []evidenceComparison 
 	return distinct
 }
 
+func (review answerEvidenceReview) supplement(answer string) string {
+	if len(answer) > 64<<10 {
+		return ""
+	}
+	return review.supplementComparisons(answer) + supplementNamedDocumentCodes(answer, review.documentCodes)
+}
+
 // Supplement only an already cited row. Two matching conditions identify the
 // row; if they could point to different remaining values, leave it alone.
-func (review answerEvidenceReview) supplement(answer string) string {
-	if len(review.rows) == 0 || len(answer) > 64<<10 {
+func (review answerEvidenceReview) supplementComparisons(answer string) string {
+	if len(review.rows) == 0 {
 		return ""
 	}
 	var recognized []evidenceRuleRow

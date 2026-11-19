@@ -10,6 +10,31 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestNamedSummarySuppliesVerifiedCodeOnGenerationFallback(t *testing.T) {
+	first := overviewFixture("a", "线材规范.pdf", "规定成品检验方法。", 3)
+	first.ChunkType = string(types.ChunkTypeText)
+	second := overviewFixture("b", "选型规范.pdf", "文件编号 AB-4923\n选型参数见正文。", 1)
+	second.ChunkType = first.ChunkType
+	question := "《线材规范》《选型规范》分别规定了什么？"
+	request := &types.ChatManage{
+		PipelineRequest: types.PipelineRequest{Query: question},
+		PipelineState:   types.PipelineState{MergeResult: []*types.SearchResult{first, second}},
+	}
+	registry := modelcontext.NewRegistry(true)
+	registry.RegisterSearchResults(request.MergeResult)
+	review := reviewAnswerEvidence(request, registry)
+	require.Empty(t, review.pending)
+	answer := "《线材规范》规定成品检验方法。《选型规范》规定选型参数。"
+	tail := html.UnescapeString(review.supplement(answer))
+	require.Contains(t, tail, "《选型规范》 AB-4923")
+	require.Contains(t, tail, `chunk_id="b"`)
+	require.Empty(t, review.supplement(answer+"文件编号 AB-4923。"))
+	require.Empty(t, review.supplement("《线材规范》规定成品检验方法。"))
+
+	second.Content += "\n文件编号 AB-4924"
+	require.Empty(t, reviewAnswerEvidence(request, registry).supplement(answer))
+}
+
 func TestEvidenceReviewAddsConditionsOnlyForACitedRow(t *testing.T) {
 	a := &types.SearchResult{
 		ID: "row-a", KnowledgeID: "calibration", KnowledgeBaseID: "engineering",

@@ -307,6 +307,10 @@ func namedOverviewDetailsRequested(query string) bool {
 }
 
 func namedOverviewEvidenceInstruction(query string) string {
+	if len(searchutil.DocumentDetailRequests(query)) > 0 {
+		return "\n按原问题中各份文件分别回答自己的小问，避免串用文件、标准号或版本。" +
+			"完整保留同一条款内的条件、单位、公差和判据；只有一份有证据时说明另一份的缺口。\n"
+	}
 	if len(searchutil.NamedDocumentOverviewTitles(query)) == 0 || !namedOverviewDetailsRequested(query) {
 		return ""
 	}
