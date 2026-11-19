@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -69,7 +70,7 @@ func applyMinerUPDFTableCorrections(req *types.ReadRequest, result *types.ReadRe
 	}
 
 	markdown := result.MarkdownContent
-	tables := htmlTableBlockPattern.FindAllStringIndex(markdown, -1)
+	tables := minerUCorrectionTableSpans(markdown)
 	fences := fencedCodeBlockPattern.FindAllStringIndex(markdown, -1)
 	edits := make([]minerUTableEdit, 0, len(corrections))
 	for i, correction := range corrections {
@@ -81,6 +82,25 @@ func applyMinerUPDFTableCorrections(req *types.ReadRequest, result *types.ReadRe
 		edits = append(edits, edit)
 	}
 	return applyMinerUTableEdits(result, edits)
+}
+
+// A parser can emit a GFM table even when the source PDF uses merged cells.
+// Keep HTML candidates and add only Markdown blocks with a valid delimiter row.
+var minerUMarkdownTableBlockPattern = regexp.MustCompile(`(?m)^[ \t]*\|[^\r\n]*\|[ \t]*(?:\r?\n[ \t]*\|[^\r\n]*\|[ \t]*)+`)
+
+func minerUCorrectionTableSpans(markdown string) [][]int {
+	htmlTables := htmlTableBlockPattern.FindAllStringIndex(markdown, -1)
+	tables := htmlTables
+	for _, span := range minerUMarkdownTableBlockPattern.FindAllStringIndex(markdown, -1) {
+		if indexInsideSpans(span[0], htmlTables) {
+			continue
+		}
+		lines := strings.SplitN(markdown[span[0]:span[1]], "\n", 3)
+		if len(lines) == 3 && markdownTableSeparatorPattern.MatchString(strings.TrimSuffix(lines[1], "\r")) {
+			tables = append(tables, span)
+		}
+	}
+	return tables
 }
 
 func (c minerUTableCorrection) findEdit(
