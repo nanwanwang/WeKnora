@@ -37,7 +37,7 @@ func writeMinerUTableCorrections(t *testing.T, pdf []byte, corrections ...minerU
 
 	directory := t.TempDir()
 	path := filepath.Join(directory, fmt.Sprintf("%x.json", sha256.Sum256(pdf)))
-	require.NoError(t, os.WriteFile(path, marshalCorrectionFixture(t, corrections), 0600))
+	require.NoError(t, os.WriteFile(path, marshalCorrectionFixture(t, corrections), 0o600))
 	t.Setenv(minerUTableCorrectionsEnv, directory)
 	return path
 }
@@ -146,7 +146,7 @@ func TestMinerUPDFTableCorrectionsRequireExactScope(t *testing.T) {
 		require.ErrorContains(t, err, test.message)
 		assert.Nil(t, got)
 	}
-	require.NoError(t, os.WriteFile(path, []byte("{invalid"), 0600))
+	require.NoError(t, os.WriteFile(path, []byte("{invalid"), 0o600))
 	_, err := finishMinerURead(req, reversedOscillator, nil, nil)
 	require.ErrorContains(t, err, "decode MinerU PDF table corrections")
 	for _, other := range []*types.ReadRequest{
