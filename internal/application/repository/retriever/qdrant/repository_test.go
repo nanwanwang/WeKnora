@@ -1114,7 +1114,10 @@ func TestEnsureCollectionAcceptsConcurrentCreate(t *testing.T) {
 	if _, ok := repo.initializedCollections.Load(1024); !ok {
 		t.Fatal("dimension must be cached once the collection is known to exist")
 	}
-	want := []string{fieldChunkID, fieldKnowledgeID, fieldKnowledgeBaseID, fieldSourceID, fieldIsEnabled, fieldContent}
+	want := []string{
+		fieldChunkID, fieldKnowledgeID, fieldKnowledgeBaseID, fieldSourceID,
+		"exact_identifiers", fieldIsEnabled, fieldContent,
+	}
 	if !slices.Equal(*indexed, want) {
 		t.Fatalf("payload indexes = %v, want %v", *indexed, want)
 	}
