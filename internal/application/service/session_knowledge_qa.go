@@ -176,6 +176,11 @@ func (s *sessionService) KnowledgeQA(
 	// Apply custom agent overrides (system prompt, temperature, retrieval params,
 	// rewrite, fallback, FAQ strategy, history turns)
 	s.applyAgentOverridesToChatManage(ctx, req.CustomAgent, chatManage)
+	if req.CustomAgent != nil && s.knowledgeService != nil {
+		ctx = chatpipeline.WithDocumentAnswerRules(
+			ctx, req.CustomAgent.ID, s.knowledgeService.GetKnowledgeBatchWithSharedAccess,
+		)
+	}
 	applyRequestReasoningEffort(
 		req.ReasoningEffort, &chatManage.SummaryConfig.Thinking, &chatManage.SummaryConfig.ReasoningEffort,
 	)
