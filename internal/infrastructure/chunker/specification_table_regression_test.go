@@ -80,6 +80,45 @@ func TestQualifiedTableLeavesUnalignedBodyUnlabelled(t *testing.T) {
 	}
 }
 
+func TestN246OscillatorFrequencyKeepsConditionsAndAdjacentRows(t *testing.T) {
+	t.Run("UTC", func(t *testing.T) {
+		source := `<table><tbody>
+<tr><td colspan="2">Characteristics</td><td>Symbol</td><td>Test Condition</td>` +
+			`<td>Min</td><td>Typ</td><td>Max</td><td>Unit</td></tr>
+<tr><td colspan="2" rowspan="2">Frequency</td><td rowspan="2">fOSC</td>
+<td>TJ = 25°C</td><td>47</td><td>52</td><td>57</td><td rowspan="2">kHz</td></tr>
+<tr><td>TLOW ≤ TA ≤ THI</td><td>46</td><td></td><td>60</td></tr>
+<tr><td colspan="2">Frequency Change with Voltage</td><td>ΔfOSC/ΔV</td>
+<td>VCC = 12 V to 25 V</td><td></td><td>0.2</td><td>1.0</td><td>%</td></tr>
+</tbody></table>`
+		evidence := PresentTableEvidence(source, "")
+		assertTableEvidenceRow(t, evidence, "TJ = 25°C", []string{"47 | 52 | 57 | kHz"}, []string{"46", "60"})
+		assertTableEvidenceRow(t, evidence, "TLOW ≤ TA ≤ THI", []string{"46 |  | 60 | kHz"}, []string{"52"})
+		assertTableEvidenceRow(t, evidence, "Frequency Change with Voltage", []string{
+			"VCC = 12 V to 25 V |  | 0.2 | 1.0 | %",
+		}, []string{"52", "kHz"})
+	})
+	t.Run("TI", func(t *testing.T) {
+		source := specificationHeader + `<tr><td>Initial accuracy</td><td>TJ = 25°C</td>
+<td>49</td><td>52</td><td>55</td><td>49</td><td>52</td><td>55</td><td>kHz</td></tr>
+<tr><td>Initial accuracy</td><td>TA = Tlow to Thigh</td>
+<td>48</td><td></td><td>56</td><td>48</td><td></td><td>56</td><td>kHz</td></tr>
+<tr><td>Voltage stability</td><td>VCC = 12 V to 25 V</td>
+<td></td><td>0.2</td><td>1</td><td></td><td>0.2</td><td>1</td><td>%</td></tr>
+</tbody></table>`
+		evidence := PresentTableEvidence(source, "")
+		assertTableEvidenceRow(t, evidence, "TJ = 25°C", []string{
+			"TL284xB / MIN = 49", "TL284xB / TYP = 52", "TL284xB / MAX = 55", "UNIT = kHz",
+		}, []string{"56"})
+		assertTableEvidenceRow(t, evidence, "TA = Tlow to Thigh", []string{
+			"TL284xB / MIN = 48", "TL284xB / MAX = 56", "UNIT = kHz",
+		}, []string{"/ TYP =", "52"})
+		assertTableEvidenceRow(t, evidence, "Voltage stability", []string{
+			"VCC = 12 V to 25 V", "TL284xB / TYP = 0.2", "TL284xB / MAX = 1", "UNIT = %",
+		}, []string{"52", "kHz"})
+	})
+}
+
 func assertTableEvidenceRow(t *testing.T, evidence, key string, want, unwanted []string) {
 	t.Helper()
 	for _, line := range strings.Split(evidence, "\n") {
