@@ -46,18 +46,22 @@ func TestMinerUPDFTableCorrectionsTIRegressions(t *testing.T) {
 	pdf := []byte("synthetic PDF revision for TI table regression")
 	oscBox, refBox := []float64{0.1, 0.4, 0.9, 0.6}, []float64{0.1, 0.1, 0.9, 0.3}
 	writeMinerUTableCorrections(t, pdf,
-		minerUTableCorrection{Page: 5, MatchText: []string{"discharge current", "tnerrucegrahcsid"}, BBox: oscBox,
+		minerUTableCorrection{
+			Page: 5, MatchText: []string{"discharge current", "tnerrucegrahcsid"}, BBox: oscBox,
 			HTML: correctionHeader +
 				"<tr><td>Discharge current</td><td>TJ = 25°C, RT/CT = 2 V</td>" +
 				"<td>7.8</td><td>8.3</td><td>8.8</td><td>7.8</td><td>8.3</td><td>8.8</td><td>mA</td></tr>\n" +
 				"<tr><td>Discharge current</td><td>RT/CT = 2 V</td>" +
-				"<td>7.5</td><td></td><td>8.8</td><td>7.6</td><td></td><td>8.8</td><td>mA</td></tr>\n</tbody></table>"},
-		minerUTableCorrection{Page: 5, MatchText: []string{"noitairavesactsrow"}, BBox: refBox,
+				"<td>7.5</td><td></td><td>8.8</td><td>7.6</td><td></td><td>8.8</td><td>mA</td></tr>\n</tbody></table>",
+		},
+		minerUTableCorrection{
+			Page: 5, MatchText: []string{"noitairavesactsrow"}, BBox: refBox,
 			HTML: correctionHeader +
 				"<tr><td>Output voltage</td><td>IO = 1 mA, TJ = 25°C</td>" +
 				"<td>4.95</td><td>5</td><td>5.05</td><td>4.9</td><td>5</td><td>5.1</td><td>V</td></tr>\n" +
 				"<tr><td>Output voltage, worst-case variation</td><td>VCC = 12 V to 25 V, IO = 1 mA to 20 mA</td>" +
-				"<td>4.9</td><td></td><td>5.1</td><td>4.82</td><td></td><td>5.18</td><td>V</td></tr>\n</tbody></table>"})
+				"<td>4.9</td><td></td><td>5.1</td><td>4.82</td><td></td><td>5.18</td><td>V</td></tr>\n</tbody></table>",
+		})
 	const prefix, suffix = "手册前文\n\n", "\n\n下一页内容"
 	// The reference table is broken badly enough that MinerU missed its
 	// locator. The manifest supplies the verified source location for it.
@@ -92,19 +96,23 @@ func TestMinerUPDFTableCorrectionsTIRegressions(t *testing.T) {
 	}{
 		{
 			"N278", "Discharge current", "TJ = 25°C, RT/CT = 2 V", "mA",
-			1, oscBox, []string{"7.8", "8.3", "8.8", "7.8", "8.3", "8.8"},
+			1, oscBox,
+			[]string{"7.8", "8.3", "8.8", "7.8", "8.3", "8.8"},
 		},
 		{
 			"N278 adjacent RT/CT row", "Discharge current", "RT/CT = 2 V", "mA",
-			1, oscBox, []string{"7.5", "", "8.8", "7.6", "", "8.8"},
+			1, oscBox,
+			[]string{"7.5", "", "8.8", "7.6", "", "8.8"},
 		},
 		{
 			"N281", "Output voltage, worst-case variation", "VCC = 12 V to 25 V, IO = 1 mA to 20 mA", "V",
-			2, refBox, []string{"4.9", "", "5.1", "4.82", "", "5.18"},
+			2, refBox,
+			[]string{"4.9", "", "5.1", "4.82", "", "5.18"},
 		},
 		{
 			"N281 adjacent nominal row", "Output voltage", "IO = 1 mA, TJ = 25°C", "V",
-			2, refBox, []string{"4.95", "5", "5.05", "4.9", "5", "5.1"},
+			2, refBox,
+			[]string{"4.95", "5", "5.05", "4.9", "5", "5.1"},
 		},
 	}
 	for _, spec := range specs {
