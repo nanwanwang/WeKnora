@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/Tencent/WeKnora/internal/infrastructure/chunker"
 	"github.com/Tencent/WeKnora/internal/searchutil"
 	"github.com/Tencent/WeKnora/internal/types"
 )
@@ -156,6 +157,12 @@ func (p *PluginMerge) attachCitationSources(ctx context.Context, results []*type
 			source.EndAt = c.EndAt
 			source.ContentRevision = c.ContentRevision
 			source.ContextHeader = c.ContextHeader
+			if c.ChunkType == types.ChunkTypeText {
+				tableContext := chunker.SpecificationTableContext(r.Content, c.Content)
+				if tableContext != "" {
+					source.ContextHeader = strings.TrimSpace(c.ContextHeader + "\n\n" + tableContext)
+				}
+			}
 			source.ChunkMetadata = c.Metadata
 			source.MatchedContent = ""
 			source.ContentRewritten = false
