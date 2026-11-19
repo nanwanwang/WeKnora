@@ -271,8 +271,10 @@ type SearchParams struct {
 	// EnableTitleMatch supplements conversational recall inside the same authorized scope.
 	EnableTitleMatch bool `json:"-"`
 	// NamedOverviewTitles contains the titles explicitly requested in the original chat question.
-	NamedOverviewTitles []string  `json:"-"`
-	QueryEmbedding      []float32 `json:"query_embedding,omitempty"`
+	NamedOverviewTitles []string `json:"-"`
+	// NamedOverviewQuestion preserves requested aspects when QueryText is a filename or a rewritten query.
+	NamedOverviewQuestion string    `json:"-"`
+	QueryEmbedding        []float32 `json:"query_embedding,omitempty"`
 	// Minimum vector similarity a hit needs; 0 keeps every vector hit.
 	VectorThreshold float64 `json:"vector_threshold" extensions:"x-agent"`
 	// Minimum keyword score a hit needs; 0 keeps every keyword hit.

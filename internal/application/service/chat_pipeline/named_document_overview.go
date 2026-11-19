@@ -7,8 +7,8 @@ import (
 	"github.com/Tencent/WeKnora/internal/types"
 )
 
-// A named overview has an explicit evidence scope. Prefer the purpose and
-// identification text for each exact document, keeping the user's title order.
+// A named overview has an explicit evidence scope. Keep the best passage for
+// every exact document before filling the budget with supporting passages.
 // If any document could not be resolved, use ordinary ranked retrieval.
 func namedOverviewSources(query string, results []*types.SearchResult, limit int) []*types.SearchResult {
 	titles := searchutil.NamedDocumentOverviewTitles(query)
@@ -32,7 +32,7 @@ func namedOverviewSources(query string, results []*types.SearchResult, limit int
 		}
 		grouped[title] = append(group, hit)
 	}
-	ordered := make([]*types.SearchResult, 0, 2*len(titles))
+	ordered := make([]*types.SearchResult, 0, 3*len(titles))
 	for _, title := range titles {
 		group := grouped[title]
 		if len(group) == 0 {
@@ -40,12 +40,14 @@ func namedOverviewSources(query string, results []*types.SearchResult, limit int
 		}
 		ordered = append(ordered, group[0])
 	}
-	for _, title := range titles {
-		if limit > 0 && len(ordered) == limit {
-			break
-		}
-		if group := grouped[title]; len(group) > 1 {
-			ordered = append(ordered, group[1])
+	for rank := 1; rank < 3; rank++ {
+		for _, title := range titles {
+			if limit > 0 && len(ordered) == limit {
+				return ordered
+			}
+			if group := grouped[title]; len(group) > rank {
+				ordered = append(ordered, group[rank])
+			}
 		}
 	}
 	return ordered

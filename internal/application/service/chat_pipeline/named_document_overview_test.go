@@ -72,6 +72,24 @@ func TestNamedOverviewSourcesFallsBackForIncompleteOrAmbiguousScope(t *testing.T
 	require.Empty(t, namedOverviewSources("《成品线材检验标准》《线缆及端子描述规范》温度要求相同吗？", rows, 10))
 }
 
+func TestNamedOverviewSourcesBudgetsSupportingPassagesAcrossDocuments(t *testing.T) {
+	const query = "《材料标准》《质量标准》对供应商选材和质量确认分别规定了什么？"
+	a := overviewFixture("a", "材料标准.pdf", "材料标准目的", 3)
+	a2 := overviewFixture("a", a.KnowledgeTitle, "材料选择", 4)
+	a2.ID = "a-selection"
+	a3 := overviewFixture("a", a.KnowledgeTitle, "抽样检验", 5)
+	a3.ID = "a-inspection"
+	b := overviewFixture("b", "质量标准.pdf", "质量标准目的", 3)
+	b2 := overviewFixture("b", b.KnowledgeTitle, "不同场景选材", 4)
+	b2.ID = "b-selection"
+	b3 := overviewFixture("b", b.KnowledgeTitle, "首样检验", 5)
+	b3.ID = "b-inspection"
+	rows := []*types.SearchResult{a, a2, a3, b, b2, b3}
+	want := []*types.SearchResult{a, b, a2, b2, a3, b3}
+	require.Equal(t, want, namedOverviewSources(query, rows, 6))
+	require.Equal(t, want[:4], namedOverviewSources(query, rows, 4))
+}
+
 func TestN291WorkflowDiagramKeepsAllFourNodesAndPageCitation(t *testing.T) {
 	const question = "《样品承认流程规范》流程图中从供应商交付到归档有哪几个节点？"
 	nodes := []string{"2. 供应商提交承认书和样品", "3. 结构核实、签样", "4. 接受承认书和样品", "5. 归档"}

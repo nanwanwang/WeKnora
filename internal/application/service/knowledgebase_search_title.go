@@ -30,7 +30,7 @@ func (s *knowledgeBaseService) recallDocumentTitles(ctx context.Context, kbs []*
 	titleCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	if len(titles) > 0 {
-		results := make([]*types.IndexWithScore, 0, 2*len(titles))
+		results := make([]*types.IndexWithScore, 0, 3*len(titles))
 		for _, title := range titles {
 			scoped := params
 			scoped.QueryText = title
@@ -46,7 +46,7 @@ func (s *knowledgeBaseService) recallDocumentTitles(ctx context.Context, kbs []*
 			}) {
 				continue
 			}
-			results = append(results, hits[:min(2, len(hits))]...)
+			results = append(results, hits[:min(3, len(hits))]...)
 		}
 		return results
 	}

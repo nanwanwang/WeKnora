@@ -134,6 +134,7 @@ func prepareMessagesWithModelContext(
 		messages[last].Content += registry.ImageSourcesNote(ids, len(chatManage.Images))
 	}
 	messages[0].Content += documentAnswerInstructions(ctx, chatManage, knowledgeResults)
+	messages[0].Content += namedOverviewEvidenceInstruction(chatManage.Query)
 	return messages, registry
 }
 

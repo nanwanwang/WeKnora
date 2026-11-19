@@ -19,6 +19,7 @@ type reviewSource struct {
 	header   string
 	ref      string
 	imageOCR bool
+	locators types.SourceLocators
 }
 
 type answerEvidenceReview struct {
@@ -53,13 +54,25 @@ func reviewAnswerEvidence(request *types.ChatManage, registry *modelcontext.Regi
 		}
 		sources = append(sources, reviewSource{
 			document: r.KnowledgeBaseID + "/" + r.KnowledgeID, title: r.KnowledgeTitle, body: r.Content, header: r.ContextHeader,
-			ref: registry.CitationTemplate(registry.ChunkHandle(r.ID)), imageOCR: ocr,
+			ref: registry.CitationTemplate(registry.ChunkHandle(r.ID)), imageOCR: ocr, locators: r.SourceLocators,
 		})
 	}
 	han := hasHan(query)
 	review := answerEvidenceReview{han: han}
 	if difference := findEvidenceDifference(query, sources); len(difference.excerpts) != 0 {
 		review.pending = renderEvidenceDifference(difference, han)
+		return review
+	}
+	if difference := inferredAcceptanceDifference(query, sources); len(difference.excerpts) != 0 {
+		review.pending = renderEvidenceDifference(difference, han)
+		return review
+	}
+	if answer := renderVerifiedTorque(query, sources); answer != "" {
+		review.pending = answer
+		return review
+	}
+	if answer := renderVerifiedNamedOverview(query, sources); answer != "" {
+		review.pending = answer
 		return review
 	}
 	for _, source := range sources {
