@@ -11,6 +11,35 @@ import (
 
 const namedOverviewQuestion = "《成品线材检验标准》《线缆及端子描述规范》《热缩套管选择规范》在线材方面分别规定了什么？"
 
+func TestDocumentDetailRerankPreservesSeparateEvidence(t *testing.T) {
+	query := "按 GB/T 1000.2-2024，谁规定试样恢复时间？" +
+		"根据《材料储存规范》，储存稳定性的条件和判据是什么？"
+	old := overviewFixture("old", "GB-T 1000.2-2020.pdf", "旧版值", 1)
+	first := overviewFixture("current", "GBT 1000.2-2024（试验方法）.pdf", "由相关规范规定。", 4)
+	second := overviewFixture("other", "材料储存规范.pdf", "温度 35 ± 1 ℃，保温 48 ± 2 h，试样无裂纹。", 5)
+	turn := &types.ChatManage{
+		PipelineRequest: types.PipelineRequest{Query: query},
+		PipelineState: types.PipelineState{
+			UserContent:  query,
+			SearchResult: []*types.SearchResult{old, second, first},
+		},
+	}
+	turn.RerankTopK = 2
+	require.Nil(t, (&PluginRerank{}).OnEvent(t.Context(), types.CHUNK_RERANK, turn, func() *PluginError {
+		require.Equal(t, []*types.SearchResult{first, second}, turn.RerankResult)
+		return nil
+	}))
+	turn.MergeResult = turn.RerankResult
+	messages, registry := prepareMessagesWithModelContext(t.Context(), turn)
+	prompt := html.UnescapeString(messages[len(messages)-1].Content)
+	require.Contains(t, prompt, first.Content)
+	require.Contains(t, prompt, second.Content)
+	require.NotContains(t, prompt, old.Content)
+	require.Contains(t, registry.DecodeOutputText(`<ref id="1"/>`), `chunk_id="current"`)
+	require.Contains(t, registry.DecodeOutputText(`<ref id="2"/>`), `chunk_id="other"`)
+	require.Empty(t, namedOverviewSources(query, []*types.SearchResult{old, second}, 2))
+}
+
 func overviewFixture(id, title, content string, page int) *types.SearchResult {
 	return &types.SearchResult{
 		ID: id, KnowledgeID: id, KnowledgeBaseID: "standards", KnowledgeTitle: title,

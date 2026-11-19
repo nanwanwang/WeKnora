@@ -80,9 +80,12 @@ func TestNamedDocumentTitleRecallRetainsScopeAndSkipsAmbiguousTitle(t *testing.T
 		IndexingStrategy: types.IndexingStrategy{KeywordEnabled: true},
 	}
 	params := types.SearchParams{
-		QueryText: "改写后没有文档标题的查询", EnableTitleMatch: true,
-		NamedOverviewTitles: []string{"检验标准", "选型规范"}, KnowledgeIDs: []string{"first", "design-1", "design-2"},
-		TagIDs: []string{"allowed-tag"}, ScopeTagIDs: []string{"scope-tag"},
+		QueryText:             "改写后没有文档标题的查询",
+		EnableTitleMatch:      true,
+		NamedOverviewTitles:   []string{"检验标准", "选型规范"},
+		NamedOverviewQuestion: "《检验标准》《选型规范》分别规定了什么？",
+		KnowledgeIDs:          []string{"first", "design-1", "design-2"},
+		TagIDs:                []string{"allowed-tag"}, ScopeTagIDs: []string{"scope-tag"},
 	}
 	got := s.recallDocumentTitles(t.Context(), []*types.KnowledgeBase{kb}, params)
 	require.Equal(t, []*types.IndexWithScore{target}, got)

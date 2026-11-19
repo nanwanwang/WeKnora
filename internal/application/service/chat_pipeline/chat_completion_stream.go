@@ -147,7 +147,7 @@ func (p *PluginChatCompletionStream) OnEvent(ctx context.Context,
 		answerCompleted := false
 		answerProduced := false
 		var reviewedAnswer strings.Builder
-		collectForReview := len(review.rows) != 0
+		collectForReview := len(review.rows) != 0 || len(review.documentCodes) != 0
 		// Providers report usage on the final stream chunk; keep the latest
 		// seen so the closing answer event can hand it to the QA turn
 		// (issue #3865: the complete event carried no usage on this path).

@@ -53,6 +53,44 @@ func TestDocumentTitleRecallIntersectsScopesAndLiveEvidence(t *testing.T) {
 	}
 	repo := NewChunkRepository(db)
 	scope := []types.KnowledgeSearchScope{{TenantID: 1, KBID: "allowed"}}
+	t.Run("scoped clauses use the exact standard edition and the relevant body", func(t *testing.T) {
+		add("standard", "allowed", "GBT 1000.2-2024（试验方法）.pdf", 1)
+		add("old-standard", "allowed", "GB/T 1000.2-2020.pdf", 1)
+		add("prefix-only", "allowed", "GB-T 1000.2-20240.pdf", 1)
+		add("outside-standard", "other", "GB-T 1000.2-2024.pdf", 1)
+		add("storage", "allowed", "试剂规范.pdf", 1)
+		add("storage-copy", "allowed", "试剂规范(1).pdf", 1)
+		for _, id := range []string{"standard", "old-standard", "prefix-only", "outside-standard"} {
+			require.NoError(t, db.Exec("UPDATE chunks SET content=? WHERE id=?",
+				"恢复方法与时间由相关规范规定。", id+"-4").Error)
+		}
+		for _, id := range []string{"storage", "storage-copy"} {
+			require.NoError(t, db.Exec("UPDATE chunks SET content=? WHERE id=?",
+				"储存稳定性：35 ± 1 ℃，48 ± 2 h，试样无裂纹。", id+"-3").Error)
+		}
+		require.NoError(t, db.Exec("UPDATE chunks SET content=? WHERE id=?",
+			"储存稳定性 …… 12", "storage-0").Error)
+		p := types.SearchParams{QueryText: "gbt1000.2-2024",
+			NamedOverviewTitles: []string{"gbt1000.2-2024", "试剂规范"},
+			NamedOverviewQuestion: "按 GB/T 1000.2-2024，恢复方法与时间由谁规定？" +
+				"按《试剂规范》，储存稳定性如何判定？",
+		}
+		hits, err := repo.SearchDocumentTitleChunks(t.Context(), scope, p)
+		require.NoError(t, err)
+		require.Len(t, hits, 1)
+		require.Equal(t, "standard-4", hits[0].ChunkID)
+		require.Equal(t, types.MatchTypeDocumentOverview, hits[0].MatchType)
+
+		p.QueryText = "试剂规范"
+		hits, err = repo.SearchDocumentTitleChunks(t.Context(), scope, p)
+		require.NoError(t, err)
+		require.Len(t, hits, 1)
+		require.Equal(t, "storage-3", hits[0].ChunkID)
+		p.KnowledgeIDs = []string{"storage-copy"}
+		hits, err = repo.SearchDocumentTitleChunks(t.Context(), scope, p)
+		require.NoError(t, err)
+		require.Empty(t, hits)
+	})
 	for _, query := range []string{"EMC设计", "emc 设计", " EMC设计.PDF "} {
 		got, err := repo.SearchDocumentTitleChunks(context.Background(), scope, types.SearchParams{QueryText: query})
 		require.NoError(t, err)

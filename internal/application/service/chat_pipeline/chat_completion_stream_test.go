@@ -2,6 +2,7 @@ package chatpipeline
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -95,6 +96,56 @@ type stubModelService struct {
 
 func (s *stubModelService) GetChatModel(context.Context, string) (chat.Chat, error) {
 	return s.model, nil
+}
+
+func TestStreamSupplementsMissingNamedDocumentCodeWithCitation(t *testing.T) {
+	const body = "《检验规范》规定了验收条件。《绝缘材料规范》整理了耐压、壁厚、内径和使用温度范围。"
+	const header = "<table><tr><td>文件编号</td><td>QD-4923</td></tr></table>"
+	for _, tc := range []struct {
+		name, extra, finish string
+		wantCode            bool
+	}{
+		{name: "omitted", wantCode: true},
+		{name: "already present", extra: "文件编号 QD-4923。"},
+		{name: "truncated", finish: "length"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			bus := &syncEventBus{}
+			model := &openStreamChat{closeStream: true, chunks: []types.StreamResponse{
+				{ResponseType: types.ResponseTypeAnswer, Content: body + tc.extra},
+				{ResponseType: types.ResponseTypeAnswer, Done: true, FinishReason: tc.finish},
+			}}
+			query := "《检验规范》和《绝缘材料规范》分别规定了什么？"
+			first := overviewFixture("inspection", "检验规范.pdf", "规定了验收条件。", 2)
+			second := overviewFixture("insulation", "绝缘材料规范.pdf", header, 3)
+			first.ChunkType = string(types.ChunkTypeText)
+			second.ChunkType = string(types.ChunkTypeText)
+			request := &types.ChatManage{
+				PipelineRequest: types.PipelineRequest{Query: query},
+				PipelineState: types.PipelineState{
+					UserContent: query, MergeResult: []*types.SearchResult{first, second},
+				},
+			}
+			request.SessionID = "scoped-document-review"
+			request.EventBus = bus
+			plugin := &PluginChatCompletionStream{modelService: &stubModelService{model: model}}
+			require.Nil(t, plugin.OnEvent(t.Context(), types.CHAT_COMPLETION_STREAM, request, func() *PluginError {
+				return nil
+			}))
+			require.Eventually(t, func() bool {
+				events := bus.finalAnswerEvents()
+				return len(events) > 0 && events[len(events)-1].Done
+			}, 2*time.Second, 5*time.Millisecond)
+			answer := strings.Join(bus.finalAnswerContents(), "")
+			require.Contains(t, answer, body+tc.extra)
+			if tc.wantCode {
+				require.Contains(t, answer, "《绝缘材料规范》 QD-4923")
+				require.Contains(t, answer, `chunk_id="insulation"`)
+			} else {
+				require.NotContains(t, answer, "《绝缘材料规范》 QD-4923")
+			}
+		})
+	}
 }
 
 // TestStreamDropsIncompleteHandleOnCancel verifies that cancellation cannot
