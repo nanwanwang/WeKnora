@@ -11,7 +11,8 @@ import (
 
 func TestN280MinerUCorrectionRecoversSolderingMaximum(t *testing.T) {
 	pdf := []byte("synthetic soldering limit PDF")
-	const broken = "<table><tr><td>C°</td><td>003</td><td>s 0 1 , gn ir edloS</td><td>er utar ep met daeL</td></tr></table>"
+	const broken = "<table><tr><td>C°</td><td>003</td>" +
+		"<td>s 0 1 , gn ir edloS</td><td>er utar ep met daeL</td></tr></table>"
 	const peak = "Package peak temperature: 260 °C"
 	const corrected = `<table><thead>
 <tr><th>Parameter</th><th>Conditions</th><th>MIN</th><th>MAX</th><th>UNIT</th></tr>
@@ -27,7 +28,8 @@ func TestN280MinerUCorrectionRecoversSolderingMaximum(t *testing.T) {
 		{"type": "table", "table_body": broken, "page_idx": 3},
 		{"type": "text", "text": peak, "page_idx": 13},
 	})
-	result, err := finishMinerURead(&types.ReadRequest{FileType: "pdf", FileContent: pdf}, broken+"\n\n"+peak, nil, layout)
+	req := &types.ReadRequest{FileType: "pdf", FileContent: pdf}
+	result, err := finishMinerURead(req, broken+"\n\n"+peak, nil, layout)
 	require.NoError(t, err)
 	require.NotContains(t, result.MarkdownContent, "003")
 	require.Contains(t, result.MarkdownContent, peak)
@@ -43,7 +45,8 @@ func TestN101MinerUCorrectionKeepsBothPEColumns(t *testing.T) {
 		"| --- | --- | --- | --- | --- |\n" +
 		"| 1140 | 3280 | 4640 | 5410 | 7650 |\n"
 	const corrected = `<table><thead>
-<tr><th>Rated V</th><th>Strong-PE AC (V)</th><th>Strong-PE DC (V)</th><th>Strong-Low AC (V)</th><th>Strong-Low DC (V)</th></tr>
+<tr><th>Rated V</th><th>Strong-PE AC (V)</th><th>Strong-PE DC (V)</th>
+<th>Strong-Low AC (V)</th><th>Strong-Low DC (V)</th></tr>
 </thead><tbody>
 <tr><td>1140</td><td>3280</td><td>4640</td><td>5410</td><td>7650</td></tr>
 </tbody></table>`
@@ -58,7 +61,10 @@ func TestN101MinerUCorrectionKeepsBothPEColumns(t *testing.T) {
 	})
 	result := &types.ReadResult{MarkdownContent: markdown, SourceBlocks: []types.SourceBlock{
 		{Start: earlier, End: target, Locator: types.SourceLocator{Type: types.SourceLocatorPDF, Page: 3}},
-		{Start: target, End: target + utf8.RuneCountInString(broken), Locator: types.SourceLocator{Type: types.SourceLocatorPDF, Page: 9}},
+		{
+			Start: target, End: target + utf8.RuneCountInString(broken),
+			Locator: types.SourceLocator{Type: types.SourceLocatorPDF, Page: 9},
+		},
 	}}
 
 	require.NoError(t, applyMinerUPDFTableCorrections(&types.ReadRequest{FileType: "pdf", FileContent: pdf}, result))

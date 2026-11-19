@@ -86,7 +86,9 @@ func applyMinerUPDFTableCorrections(req *types.ReadRequest, result *types.ReadRe
 
 // A parser can emit a GFM table even when the source PDF uses merged cells.
 // Keep HTML candidates and add only Markdown blocks with a valid delimiter row.
-var minerUMarkdownTableBlockPattern = regexp.MustCompile(`(?m)^[ \t]*\|[^\r\n]*\|[ \t]*(?:\r?\n[ \t]*\|[^\r\n]*\|[ \t]*)+`)
+var minerUMarkdownTableBlockPattern = regexp.MustCompile(
+	`(?m)^[ \t]*\|[^\r\n]*\|[ \t]*(?:\r?\n[ \t]*\|[^\r\n]*\|[ \t]*)+`,
+)
 
 func minerUCorrectionTableSpans(markdown string) [][]int {
 	htmlTables := htmlTableBlockPattern.FindAllStringIndex(markdown, -1)
