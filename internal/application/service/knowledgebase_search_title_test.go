@@ -67,7 +67,8 @@ func TestTitleRecallPreservesExplicitDocumentAndTagFilters(t *testing.T) {
 
 func TestNamedDocumentTitleRecallRetainsScopeAndSkipsAmbiguousTitle(t *testing.T) {
 	target := &types.IndexWithScore{
-		ChunkID: "purpose", KnowledgeID: "first", KnowledgeBaseID: "allowed", MatchType: types.MatchTypeDocumentOverview,
+		ChunkID: "purpose", KnowledgeID: "first", KnowledgeBaseID: "allowed",
+		MatchType: types.MatchTypeDocumentOverview,
 	}
 	repo := &recordingTitleChunkRepo{hits: map[string][]*types.IndexWithScore{
 		"检验标准": {target},

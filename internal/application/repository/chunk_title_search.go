@@ -79,7 +79,8 @@ func (r *chunkRepository) SearchDocumentTitleChunks(ctx context.Context, scopes 
 	docJoin := "JOIN (?) AS d ON d.id = c.knowledge_id AND d.tenant_id = c.tenant_id" +
 		" AND d.knowledge_base_id = c.knowledge_base_id"
 	selectPassages := "c.id, c.knowledge_id, c.knowledge_base_id, c.content, c.tag_id, d.title_exact," +
-		" ROW_NUMBER() OVER (PARTITION BY c.tenant_id,c.knowledge_id ORDER BY " + rankExpr + ", c.chunk_index,c.id) AS title_row"
+		" ROW_NUMBER() OVER (PARTITION BY c.tenant_id,c.knowledge_id" +
+		" ORDER BY " + rankExpr + ", c.chunk_index,c.id) AS title_row"
 	ranked := eligible().Joins(docJoin, docs).Select(selectPassages, rankArgs...)
 	var rows []struct {
 		ID, KnowledgeID, KnowledgeBaseID, Content, TagID string

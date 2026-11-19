@@ -17,7 +17,8 @@ func namedOverviewSources(query string, results []*types.SearchResult, limit int
 	}
 	grouped := make(map[string][]*types.SearchResult, len(titles))
 	for _, hit := range results {
-		if hit == nil || hit.MatchType != types.MatchTypeDocumentOverview || hit.KnowledgeID == "" || hit.Content == "" {
+		if hit == nil || hit.MatchType != types.MatchTypeDocumentOverview ||
+			hit.KnowledgeID == "" || hit.Content == "" {
 			continue
 		}
 		title := searchutil.NormalizeDocumentTitle(hit.KnowledgeTitle)

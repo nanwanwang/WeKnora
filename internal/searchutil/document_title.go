@@ -50,7 +50,7 @@ func DocumentTitleHint(query string) (title string, topic bool) {
 	return "", false
 }
 
-var quotedDocumentTitle = regexp.MustCompile("《([^《》\\r\\n]+)》")
+var quotedDocumentTitle = regexp.MustCompile(`《([^《》\r\n]+)》`)
 
 // NamedDocumentOverviewTitles returns distinct filenames in an explicit request
 // for each document's purpose or scope. Detail and comparison requests retain
