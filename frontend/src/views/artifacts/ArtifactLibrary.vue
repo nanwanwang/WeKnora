@@ -11,6 +11,10 @@
     </div>
 
     <div class="toolbar">
+      <div v-if="momArtifactsEnabled" class="category-tabs artifact-sources" role="tablist" :aria-label="$t('artifactLibrary.title')">
+        <button type="button" role="tab" :aria-selected="source === 'weknora'" @click="source = 'weknora'">WeKnora</button>
+        <button type="button" role="tab" :aria-selected="source === 'mom'" @click="source = 'mom'">MOM {{ $t('artifactLibrary.title') }}</button>
+      </div>
       <div class="category-tabs" role="tablist" :aria-label="$t('artifactLibrary.typeFilter')">
         <button
           v-for="c in ARTIFACT_CATEGORIES"
@@ -67,17 +71,17 @@
       />
 
       <template v-else>
-        <div class="result-count">{{ $t('artifactLibrary.total', { count: total }) }}</div>
+        <div v-if="source === 'weknora'" class="result-count">{{ $t('artifactLibrary.total', { count: total }) }}</div>
         <section v-for="section in sections" :key="section.group" class="date-section">
           <h3 class="date-heading">{{ $t(`artifactLibrary.groups.${section.group}`) }}</h3>
           <ul class="artifact-rows">
             <li
               v-for="item in section.items"
-              :key="`${item.message_id}:${item.index}`"
+              :key="itemKey(item)"
               class="artifact-row"
               @click="openPreview(item)"
             >
-              <button type="button" class="artifact-open" :title="$t('artifactLibrary.preview')">
+              <button type="button" class="artifact-open" :disabled="item.mom?.canPreview === false" :title="$t('artifactLibrary.preview')">
                 <ArtifactFileIcon :file-name="item.file_name" />
                 <span class="artifact-body">
                   <span class="artifact-name" :title="item.file_name">{{ item.file_name }}</span>
@@ -95,6 +99,7 @@
                 </span>
               </button>
               <button
+                v-if="!item.mom"
                 type="button"
                 class="session-link"
                 :title="$t('artifactLibrary.openSession')"
@@ -104,6 +109,7 @@
                 <span>{{ item.session_title || $t('artifactLibrary.untitledSession') }}</span>
               </button>
               <t-button
+                v-if="item.mom?.canDownload !== false"
                 class="row-action"
                 variant="text"
                 shape="square"
@@ -116,6 +122,7 @@
                 <template #icon><t-icon name="download" size="16px" /></template>
               </t-button>
               <t-button
+                v-if="!item.mom"
                 class="row-action row-action--danger"
                 variant="text"
                 shape="square"
@@ -149,20 +156,21 @@
       :footer="false"
       :close-on-overlay-click="true"
       :close-on-esc-keydown="true"
-      @closed="previewItem = null"
+      @closed="closePreview"
     >
       <template #header>
         <div v-if="previewItem" class="preview-header">
           <ArtifactFileIcon class="preview-header-icon" :file-name="previewItem.file_name" />
           <div class="preview-header-text">
             <div class="preview-header-title" :title="previewItem.file_name">{{ previewItem.file_name }}</div>
-            <button type="button" class="session-link session-link--inline" @click="openSession(previewItem)">
+            <button v-if="!previewItem.mom" type="button" class="session-link session-link--inline" @click="openSession(previewItem)">
               <t-icon name="chat" size="12px" />
               <span>{{ previewItem.session_title || $t('artifactLibrary.untitledSession') }}</span>
             </button>
           </div>
           <div ref="previewActions" class="preview-actions" />
           <t-button
+            v-if="previewItem.mom?.canDownload !== false"
             class="row-action"
             variant="text"
             shape="square"
@@ -175,6 +183,7 @@
             <template #icon><t-icon name="download" size="16px" /></template>
           </t-button>
           <t-button
+            v-if="!previewItem.mom"
             class="row-action row-action--danger"
             variant="text"
             shape="square"
@@ -200,9 +209,13 @@
         </div>
       </template>
       <div v-if="previewItem" class="preview-body">
+        <t-loading v-if="previewPending" size="small" />
+        <EmptyState v-else-if="previewFailed" icon="error-circle" :title="$t('artifactLibrary.loadFailed')" />
         <DocumentPreview
-          :key="`${previewItem.message_id}:${previewItem.index}`"
+          v-else-if="!previewItem.mom || previewBlob"
+          :key="itemKey(previewItem)"
           :toolbar-target="previewActions"
+          :source-blob="previewBlob"
           :session-id="previewItem.session_id"
           :message-id="previewItem.message_id"
           :artifact-index="previewItem.index"
@@ -222,7 +235,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { MessagePlugin } from 'tdesign-vue-next'
 import { downloadArtifact } from '@/api/chat'
-import { deleteArtifactLibraryItem, listArtifactLibrary, type ArtifactLibraryItem } from '@/api/artifacts'
+import { deleteArtifactLibraryItem, listArtifactLibrary, listMomArtifacts, readMomArtifact, type ArtifactLibraryItem } from '@/api/artifacts'
+import { useAuthStore } from '@/stores/auth'
 import {
   ARTIFACT_CATEGORIES,
   artifactCategoryExtensions,
@@ -245,11 +259,15 @@ const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const confirmDelete = useConfirmDelete()
+const auth = useAuthStore()
 
+const momArtifactsEnabled = window.__RUNTIME_CONFIG__?.MOM_ARTIFACTS_ENABLED === true
+const source = ref<'weknora' | 'mom'>(momArtifactsEnabled && route.query.source === 'mom' ? 'mom' : 'weknora')
 const category = ref<ArtifactCategory>(parseArtifactCategory(route.query.type))
 const keyword = ref(typeof route.query.q === 'string' ? route.query.q : '')
 const items = ref<ArtifactLibraryItem[]>([])
 const total = ref(0)
+const moreMomFiles = ref(false)
 const page = ref(0)
 const loading = ref(false)
 const loadError = ref(false)
@@ -257,12 +275,15 @@ const downloading = reactive<Record<string, boolean>>({})
 const deleting = reactive<Record<string, boolean>>({})
 const previewItem = ref<ArtifactLibraryItem | null>(null)
 const previewVisible = ref(false)
+const previewBlob = ref<Blob>()
+const previewPending = ref(false)
+const previewFailed = ref(false)
 const previewActions = ref<HTMLElement | null>(null)
 const scrollRoot = ref<HTMLElement | null>(null)
 const sentinel = ref<HTMLElement | null>(null)
 
 const sections = computed(() => groupArtifactsByDate(items.value))
-const hasMore = computed(() => items.value.length < total.value)
+const hasMore = computed(() => source.value === 'mom' ? moreMomFiles.value : items.value.length < total.value)
 const isFiltered = computed(() => category.value !== 'all' || keyword.value.trim() !== '')
 const previewFileType = computed(() => {
   const item = previewItem.value
@@ -278,12 +299,13 @@ async function fetchPage(nextPage: number) {
   loading.value = true
   loadError.value = false
   try {
-    const res = await listArtifactLibrary({
+    const params = {
       keyword: keyword.value,
       fileTypes: artifactCategoryExtensions(category.value),
       page: nextPage,
       pageSize: PAGE_SIZE,
-    })
+    }
+    const res = source.value === 'mom' ? await listMomArtifacts(params) : await listArtifactLibrary(params)
     if (mine !== ticket) return
     const rows = Array.isArray(res?.data) ? res.data : []
     // Deleting a row shifts every later row one page-offset earlier, so an
@@ -295,7 +317,8 @@ async function fetchPage(nextPage: number) {
       const shown = new Set(items.value.map(itemKey))
       items.value = [...items.value, ...rows.filter((row) => !shown.has(itemKey(row)))]
     }
-    total.value = typeof res?.total === 'number' ? res.total : items.value.length
+    total.value = 'total' in res ? res.total : items.value.length
+    moreMomFiles.value = 'hasMore' in res && res.hasMore
     page.value = nextPage
   } catch (err) {
     if (mine !== ticket) return
@@ -310,6 +333,7 @@ async function fetchPage(nextPage: number) {
 function reload() {
   items.value = []
   total.value = 0
+  moreMomFiles.value = false
   page.value = 0
   void fetchPage(1)
 }
@@ -318,11 +342,13 @@ function loadMore() {
   if (loading.value || !hasMore.value) return
   // Page from how many rows are actually shown, not from the last page number:
   // after a delete those differ, and paging by number would skip a row.
-  void fetchPage(Math.floor(items.value.length / PAGE_SIZE) + 1)
+  void fetchPage(source.value === 'mom' ? page.value + 1 : Math.floor(items.value.length / PAGE_SIZE) + 1)
 }
 
 function syncQuery() {
   const query = { ...route.query }
+  if (source.value === 'mom') query.source = 'mom'
+  else delete query.source
   if (category.value === 'all') delete query.type
   else query.type = category.value
   const q = keyword.value.trim()
@@ -354,10 +380,46 @@ watch(category, () => {
   syncQuery()
   reload()
 })
+watch(source, () => {
+  previewVisible.value = false
+  closePreview()
+  syncQuery()
+  reload()
+})
+watch(() => [auth.user?.id, auth.selectedTenantId], () => {
+  if (source.value === 'mom') {
+    previewVisible.value = false
+    closePreview()
+    reload()
+  }
+})
 
-function openPreview(item: ArtifactLibraryItem) {
+let previewRequest = 0
+
+function closePreview() {
+  previewRequest++
+  previewItem.value = null
+  previewBlob.value = undefined
+  previewPending.value = false
+  previewFailed.value = false
+}
+
+async function openPreview(item: ArtifactLibraryItem) {
+  if (item.mom?.canPreview === false) return
+  closePreview()
   previewItem.value = item
   previewVisible.value = true
+  if (!item.mom) return
+  const request = previewRequest
+  previewPending.value = true
+  try {
+    const data = await readMomArtifact(item, 'preview')
+    if (request === previewRequest) previewBlob.value = data
+  } catch {
+    if (request === previewRequest) previewFailed.value = true
+  } finally {
+    if (request === previewRequest) previewPending.value = false
+  }
 }
 
 function openSession(item: ArtifactLibraryItem) {
@@ -366,7 +428,7 @@ function openSession(item: ArtifactLibraryItem) {
 }
 
 function itemKey(item: ArtifactLibraryItem) {
-  return `${item.message_id}:${item.index}`
+  return item.mom ? `mom:${item.message_id}:${item.mom.fileId}` : `${item.message_id}:${item.index}`
 }
 
 function isDownloading(item: ArtifactLibraryItem) {
@@ -374,11 +436,12 @@ function isDownloading(item: ArtifactLibraryItem) {
 }
 
 async function handleDownload(item: ArtifactLibraryItem) {
+  if (item.mom?.canDownload === false) return
   const key = itemKey(item)
   if (downloading[key]) return
   downloading[key] = true
   try {
-    const blob = await downloadArtifact(item.session_id, item.message_id, item.index)
+    const blob = item.mom ? await readMomArtifact(item, 'download') : await downloadArtifact(item.session_id, item.message_id, item.index)
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -403,7 +466,7 @@ function isDeleting(item: ArtifactLibraryItem) {
 // says how many versions go with it. The bytes are reclaimed server side, which
 // is why this asks at all.
 function handleDelete(item: ArtifactLibraryItem) {
-  if (isDeleting(item)) return
+  if (item.mom || isDeleting(item)) return
   confirmDelete({
     title: t('artifactLibrary.deleteTitle'),
     body:
@@ -468,6 +531,8 @@ onBeforeUnmount(() => {
 <style scoped lang="less">
 @import '@/components/css/artifact-filter-tabs.less';
 @import (reference) '@/components/css/resource-card.less';
+
+.artifact-sources { margin-right: 12px; }
 
 .artifact-library { .resource-list-content(); }
 

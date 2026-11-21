@@ -144,6 +144,7 @@ flowchart LR
 | `LLM_DEBUG_LOG` | false | true 时在 LOG_PATH 同目录写 `llm_debug.log` |
 | `TZ` | Asia/Shanghai | 时区 |
 | `DEFAULT_LOCALE` | 空 | 前端界面默认语言（frontend 容器读取）：`zh-CN` / `en-US` / `ru-RU` / `ko-KR` / `ja-JP`，非法值忽略。仅影响未手动切换过语言的用户，优先级：用户已选语言 > 本变量 > `zh-CN`；改完重启 frontend 容器即可，无需重建镜像 |
+| `MOM_ARTIFACTS_ORIGIN` | 空 | 可选的 MOM 网关地址，例如 `https://mom.example.com`。配置后在「产物」页显示「MOM 产物」。由 frontend 容器读取，空值关闭该入口 |
 | `WEKNORA_LANGUAGE` | 空 | 文档处理语言（问题/摘要生成）。优先级：本变量 > 请求的 `Accept-Language` > 内置 `zh-CN`。文档处理语言可独立于界面语言设置，例如使用英文界面处理韩文文档。未设置回复语言的 IM 渠道也以本变量（未设置时为 `zh-CN`）作为默认回复语言 |
 | `AUTO_MIGRATE` | true | 启动时自动执行数据库迁移。PostgreSQL 下也控制按维度后台建 HNSW 索引，设为 `false` 时两者都不做（见[检索引擎](../03-features/05-retrieval-engines.md)） |
 | `AUTO_RECOVER_DIRTY` | true | 自动修复 golang-migrate 的 dirty 状态（上次迁移中断留下的）。手工排查迁移问题时应临时设为 false，否则启动会自动改写迁移版本记录，见[数据库与迁移](../06-development/02-database-schema.md) |
@@ -154,6 +155,8 @@ flowchart LR
 | `APP_EXTERNAL_URL` / `FRONTEND_BASE_URL` | 空 | IM 渠道图片/文件外链的外部可达 URL / 前端外部 origin |
 | `WEKNORA_MCP_ASK_TIMEOUT` | `4m` | MCP Server 内置 `ask` 的单次服务端时限；支持 Go duration（如 `10m`）或纯秒数（如 `600`），非法或非正值回退到 `4m`。客户端与反向代理的独立超时需另行配置 |
 | `RESOURCE_URL_MODE` | handle | API 响应里文件引用的默认形式：`handle` 返回内部 `resource://`，`public` 返回可直接加载的限时外链。单次请求可用 `?resource_urls=` 覆盖，详见 [API 总览](../04-api/01-api-overview.md) |
+
+使用「MOM 产物」时，先在目标 MOM 环境部署 `/vbaseapi/aiApplications/weknora-artifacts` 接口，配置 `WeKnora:SharedArtifacts` 的 `Enabled`、`AccountId` 和 `WorkspaceId`，并将 MOM 的 WeKnora 连接指向同一套 WeKnora。`AccountId` 和 `WorkspaceId` 分别是有权汇总的 WeKnora 账号和空间的 ID。使用包含此功能的 frontend 镜像，在 WeKnora 部署的 `.env` 中设置 `MOM_ARTIFACTS_ORIGIN` 后重新创建 frontend 容器。地址可包含端口。使用 HTTPS 时，目标 MOM 网关的证书须受 frontend 容器信任。
 
 `APP_EXTERNAL_URL` 影响 IM 渠道能否渲染知识库图片。IM 平台需要拿到公网 http(s) URL，二选一：
 
