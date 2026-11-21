@@ -9,6 +9,7 @@ declare global {
       MAX_FILE_SIZE_MB?: number;
       MAX_SKILL_BUNDLE_SIZE_MB?: number;
       DEFAULT_LOCALE?: string;
+      MOM_ARTIFACTS_ENABLED?: boolean;
     };
   }
 }

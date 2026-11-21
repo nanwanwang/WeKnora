@@ -6,6 +6,25 @@ case "${DEFAULT_LOCALE:-}" in
   zh-CN|zh-TW|en-US|ru-RU|ko-KR|ja-JP) RUNTIME_DEFAULT_LOCALE="${DEFAULT_LOCALE}" ;;
 esac
 
+# Enable the MOM artifact source only for a configured upstream origin.
+mom_artifacts_origin=${MOM_ARTIFACTS_ORIGIN:-}
+mom_artifacts_enabled=false
+mom_artifacts_config=/etc/nginx/mom-artifacts.d/proxy.conf
+mkdir -p /etc/nginx/mom-artifacts.d || exit 1
+if [ -n "$mom_artifacts_origin" ]; then
+  mom_artifacts_origin=${mom_artifacts_origin%/}
+  if [ "$mom_artifacts_origin" != "$(printf '%s' "$mom_artifacts_origin" | LC_ALL=C tr -d '[:space:]')" ] ||
+     ! printf '%s\n' "$mom_artifacts_origin" | LC_ALL=C grep -Eq '^https?://([A-Za-z0-9][A-Za-z0-9.-]*|\[[A-Fa-f0-9:]+\])(:[0-9]{1,5})?$'; then
+    echo 'MOM_ARTIFACTS_ORIGIN must be an HTTP(S) origin such as https://mom.example.com' >&2
+    exit 1
+  fi
+  export MOM_ARTIFACTS_ORIGIN="$mom_artifacts_origin"
+  envsubst '${MOM_ARTIFACTS_ORIGIN}' < /etc/nginx/templates/mom-artifacts.conf.template > "$mom_artifacts_config" || exit 1
+  mom_artifacts_enabled=true
+else
+  : > "$mom_artifacts_config" || exit 1
+fi
+
 # 生成运行时配置文件，注入环境变量到前端
 FILE_MB=${MAX_FILE_SIZE_MB:-50}
 SKILL_MB=${MAX_SKILL_BUNDLE_SIZE_MB:-256}
@@ -20,7 +39,8 @@ cat > /usr/share/nginx/html/config.js << EOF
 window.__RUNTIME_CONFIG__ = {
   MAX_FILE_SIZE_MB: ${FILE_MB},
   MAX_SKILL_BUNDLE_SIZE_MB: ${SKILL_MB},
-  DEFAULT_LOCALE: "${RUNTIME_DEFAULT_LOCALE}"
+  DEFAULT_LOCALE: "${RUNTIME_DEFAULT_LOCALE}",
+  MOM_ARTIFACTS_ENABLED: ${mom_artifacts_enabled}
 };
 EOF
 

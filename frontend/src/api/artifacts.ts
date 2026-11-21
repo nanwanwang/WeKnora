@@ -1,4 +1,4 @@
-import { del, get } from '@/utils/request'
+import { del, get, getDown } from '@/utils/request'
 
 /**
  * One file in the artifact library: the latest version of a file a skill
@@ -20,6 +20,7 @@ export interface ArtifactLibraryItem {
   created_at: string
   /** How many times this file was (re)generated in its session. */
   version_count: number
+  mom?: { fileId: string; canPreview: boolean; canDownload: boolean }
 }
 
 export interface ArtifactLibraryParams {
@@ -39,13 +40,43 @@ export interface ArtifactLibraryPage {
 }
 
 export function listArtifactLibrary(params: ArtifactLibraryParams = {}) {
+  return get<ArtifactLibraryPage>('/api/v1/artifacts', { params: artifactQuery(params) })
+}
+
+function artifactQuery(params: ArtifactLibraryParams) {
   const query: Record<string, string | number> = {}
   const keyword = params.keyword?.trim()
   if (keyword) query.keyword = keyword
   if (params.fileTypes?.length) query.file_types = params.fileTypes.join(',')
   if (params.page) query.page = params.page
   if (params.pageSize) query.page_size = params.pageSize
-  return get<ArtifactLibraryPage>('/api/v1/artifacts', { params: query })
+  return query
+}
+
+interface MomArtifact {
+  messageId: string
+  fileId: string
+  fileName: string
+  fileType: string
+  fileSize?: number
+  createdAt: string
+  canPreview: boolean
+  canDownload: boolean
+}
+
+export async function listMomArtifacts(params: ArtifactLibraryParams) {
+  const page = await get<{ data: MomArtifact[]; has_more: boolean }>('/api/v1/mom-artifacts', { params: artifactQuery(params) })
+  const data: ArtifactLibraryItem[] = page.data.map(item => ({
+    session_id: '', session_title: '', message_id: item.messageId, index: 0, source_path: '', version_count: 1,
+    file_name: item.fileName, file_type: item.fileType, file_size: item.fileSize ?? 0, created_at: item.createdAt,
+    mom: { fileId: item.fileId, canPreview: item.canPreview, canDownload: item.canDownload },
+  }))
+  return { data, hasMore: page.has_more }
+}
+
+export function readMomArtifact(item: ArtifactLibraryItem, action: 'preview' | 'download') {
+  if (!item.mom) throw new Error('Missing MOM file identity')
+  return getDown(`/api/v1/mom-artifacts/${encodeURIComponent(item.message_id)}/${encodeURIComponent(item.mom.fileId)}/${action}`)
 }
 
 export interface ArtifactDeleteResult {

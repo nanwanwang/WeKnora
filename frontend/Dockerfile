@@ -63,6 +63,7 @@ FROM nginx:1.30.3-alpine@sha256:0d3b80406a13a767339fbe2f41406d6c7da727ab89cf8fae
 COPY --from=builder /frontend/dist /usr/share/nginx/html
 
 COPY nginx.conf /etc/nginx/templates/default.conf.template
+COPY nginx-mom-artifacts.conf /etc/nginx/templates/mom-artifacts.conf.template
 
 # Copied outside templates/ on purpose: envsubst would eat $host and the other
 # nginx variables in it.
