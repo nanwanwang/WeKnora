@@ -1,0 +1,47 @@
+name: Fork Verify
+on:
+  workflow_call:
+    inputs:
+      ref:
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Protect custom retrieval regression coverage
+        shell: bash
+        run: |
+          set -euo pipefail
+          if test -d .github/upstream-conflicts; then
+            echo "::error::Resolve the blocked upstream merge before proceeding."
+            exit 1
+          fi
+          python3 -m unittest discover -s scripts/fork/tests -v
+          python3 -m py_compile scripts/backfill-exact-identifiers.py scripts/fork/*.py
+          go test ./internal/types -list '^Test(ExactIdentifiers|ContainsExactIdentifier)$' | tee /tmp/types-tests
+          grep -qx TestExactIdentifiers /tmp/types-tests
+          grep -qx TestContainsExactIdentifier /tmp/types-tests
+          go test ./internal/application/repository/retriever/qdrant -list '^TestCreatePayloadExactIdentifiers$' | tee /tmp/qdrant-tests
+          grep -qx TestCreatePayloadExactIdentifiers /tmp/qdrant-tests
+      - name: Go tests and static checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t packages < <(go list ./... | grep -v '/docreader/')
+          test "${#packages[@]}" -gt 0
+          go vet "${packages[@]}"
+          go test -timeout 10m "${packages[@]}"
+      - name: Build server
+        run: go build -o /tmp/weknora-server ./cmd/server

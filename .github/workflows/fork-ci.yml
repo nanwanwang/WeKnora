@@ -1,0 +1,32 @@
+name: Fork CI
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Commit or branch to check (blank uses the selected workflow branch; never publishes)'
+        required: false
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: fork-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+jobs:
+  verify:
+    if: github.repository == 'nanwanwang/WeKnora'
+    uses: ./.github/workflows/fork-verify.yml
+    with:
+      ref: ${{ inputs.ref || github.sha }}
+  images:
+    needs: verify
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/fork-images.yml
+    with:
+      ref: ${{ inputs.ref || github.sha }}
+      publish: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
