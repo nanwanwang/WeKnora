@@ -1,0 +1,248 @@
+name: Finish WeKnora v0.9.1 merge
+
+on:
+  push:
+    branches: [codex/finish-upstream-v0.9.1]
+    paths:
+      - .github/workflows/finish-upstream-v0.9.1.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: finish-weknora-upstream-v0-9-1
+  cancel-in-progress: false
+
+env:
+  GO_VERSION: "1.26"
+  GOPROXY: https://proxy.golang.org,direct
+  WEKNORA_LOG_FORMAT: ""
+  BASE_SHA: "2f44cf29fa99d25417a337326e0eaebcbb860f05"
+  SYNC_SHA: "6c37fb42ceff384bc3261ee5bdc8a8603dbfb0fa"
+  SYNC_REF: "refs/heads/codex/sync-upstream-v0.9.1"
+
+jobs:
+  verify:
+    if: github.repository == 'nanwanwang/WeKnora'
+    name: Format, vet, test, and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: paradedb/paradedb:v0.25.11-pg17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: pg
+          POSTGRES_DB: weknora
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d weknora"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=15
+          --health-start-period=15s
+      redis:
+        image: redis:7.0-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ env.SYNC_SHA }}
+          persist-credentials: false
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+          # v6 defaults to go.mod for the cache key (more stable than go.sum).
+
+      - name: Download modules
+        run: go mod download
+      - name: Generate and verify Swagger
+        shell: bash
+        run: |
+          go run ./scripts/swagger-gen -q -o ./docs
+          test "$(git diff --name-only)" = "$(printf '%s\n' docs/swagger.json docs/swagger.yaml)"
+          git diff --check
+          go test ./docs/...
+
+      - name: Test Docker entrypoint permissions
+        run: bash scripts/docker-entrypoint_test.sh
+      - name: Verify third-party notices and source bundle
+        run: |
+          bash ./scripts/check-license-bundle.sh
+          bash ./scripts/test-license-bundle.sh
+
+      - name: Check formatting
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            # Compare base..head, not the PR merge commit, so files changed only
+            # on main after the branch point are not attributed to this PR.
+            diff_range="${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}"
+          else
+            base="$BASE_SHA"
+            if [ -z "$base" ] || [[ "$base" =~ ^0+$ ]]; then
+              base=$(git rev-parse HEAD^)
+            fi
+            diff_range="$base..$(git rev-parse HEAD)"
+          fi
+          unformatted=$(
+            git diff --name-only --diff-filter=ACMR -z "$diff_range" -- '*.go' ':!cli/**' |
+              xargs -0 -r gofmt -l
+          )
+          if [ -n "$unformatted" ]; then
+            echo "The following Go files are not gofmt-formatted:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Verify generated model catalog
+        run: python3 scripts/model-catalog/generate.py --check
+
+      - name: Verify Git hook test coverage
+        run: bash ./scripts/test-git-hooks.sh
+
+      - name: Prepare PostgreSQL test databases
+        shell: bash
+        env:
+          PGPASSWORD: pg
+        run: |
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update && sudo apt-get install -y postgresql-client
+          fi
+          for i in $(seq 1 30); do
+            if pg_isready -h 127.0.0.1 -p 5432 -U postgres -d weknora >/dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
+          psql -h 127.0.0.1 -p 5432 -U postgres -d postgres -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE DATABASE weknora_repository_test;
+          CREATE DATABASE weknora_memory_test;
+          CREATE DATABASE weknora_task_progress_test;
+          CREATE DATABASE weknora_retriever_test TEMPLATE template0;
+          SQL
+          psql -h 127.0.0.1 -p 5432 -U postgres -d weknora_retriever_test -v ON_ERROR_STOP=1 \
+            -c "DROP EXTENSION IF EXISTS pg_search CASCADE; DROP SCHEMA IF EXISTS paradedb, pgsearch CASCADE;"
+
+      - name: Vet and test
+        shell: bash
+        env:
+          WEKNORA_MIGRATION_TEST_POSTGRES_DSN: postgres://postgres:pg@127.0.0.1:5432/weknora?sslmode=disable
+          WEKNORA_REPOSITORY_TEST_POSTGRES_DSN: postgres://postgres:pg@127.0.0.1:5432/weknora_repository_test?sslmode=disable
+          WEKNORA_MEMORY_TEST_POSTGRES_DSN: host=127.0.0.1 port=5432 user=postgres password=pg dbname=weknora_memory_test sslmode=disable
+          WEKNORA_TEST_POSTGRES_DSN: host=127.0.0.1 port=5432 user=postgres password=pg dbname=weknora_task_progress_test sslmode=disable
+          WEKNORA_RETRIEVER_TEST_POSTGRES_DSN: postgres://postgres:pg@127.0.0.1:5432/weknora_retriever_test?sslmode=disable
+          WEKNORA_TEST_REDIS_ADDR: 127.0.0.1:6379
+          WEKNORA_REQUIRE_INTEGRATION: "1"
+        run: |
+          mapfile -t all_pkgs < <(go list ./... | grep -v '/docreader/')
+          go vet -tags sqlite_fts5 "${all_pkgs[@]}"
+
+          mapfile -t pkgs < <(
+            printf '%s\n' "${all_pkgs[@]}" |
+              grep -Ev '/internal/(stream|sandbox|agent|im)(/|$)|/tests/lite_smoke$'
+          )
+          go test -tags sqlite_fts5 "${pkgs[@]}"
+          go test ./internal/application/repository/retriever/sqlite \
+            -run '^TestSaveWorksWhenTheFTS5ModuleIsNotCompiledIn$'
+
+          go test -race -tags sqlite_fts5 \
+            ./internal/stream/... \
+            ./internal/sandbox/... \
+            ./internal/agent/... \
+            ./internal/im/...
+
+      - name: Desktop and cross-platform sandbox checks
+        shell: bash
+        run: |
+          go vet -tags "desktop,sqlite_fts5" ./internal/container ./internal/application/service ./cmd/desktop
+          go test -tags "desktop,sqlite_fts5" ./internal/container ./internal/application/service ./cmd/desktop
+          go build -tags "desktop,sqlite_fts5" -o /tmp/weknora-desktop ./cmd/desktop
+          rm -f /tmp/weknora-desktop
+
+          GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go vet ./internal/localsandbox/...
+          GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build ./internal/localsandbox/...
+          for pkg in $(GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go list ./internal/localsandbox/...); do
+            GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go test -c "$pkg" -o /dev/null
+          done
+
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go vet ./internal/localsandbox/...
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build ./internal/localsandbox/...
+          for pkg in $(GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go list ./internal/localsandbox/...); do
+            GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go test -c "$pkg" -o /dev/null
+          done
+
+      - name: Lite mode end-to-end smoke test
+        run: go test -v -race -tags sqlite_fts5 -count=1 ./tests/lite_smoke/...
+
+      - name: Build server
+        run: |
+          go build ./cmd/server
+          go build -tags sqlite_fts5 -o /tmp/weknora-lite ./cmd/server
+          rm -f /tmp/weknora-lite
+      - name: Upload validated Swagger files
+        uses: actions/upload-artifact@v4
+        with:
+          name: verified-weknora-swagger
+          path: |
+            docs/swagger.json
+            docs/swagger.yaml
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    name: Commit verified docs and merge PR 14
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ env.SYNC_SHA }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: verified-weknora-swagger
+          path: docs
+
+      - name: Publish verified documents and merge
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git diff --check
+          test "$(git diff --name-only)" = "$(printf '%s\n' docs/swagger.json docs/swagger.yaml)"
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$BASE_SHA"
+          test "$(git ls-remote origin "$SYNC_REF" | cut -f1)" = "$SYNC_SHA"
+          pr="repos/$GITHUB_REPOSITORY/pulls/14"
+          test "$(gh api "$pr" --jq '.state + " " + .base.ref + " " + .head.sha')" = "open main $SYNC_SHA"
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- docs/swagger.json docs/swagger.yaml
+          git commit -m 'Regenerate Swagger docs after upstream merge'
+          head="$(git rev-parse HEAD)"
+          git push origin "$head:$SYNC_REF"
+
+          for attempt in {1..12}; do
+            if [ "$(gh api "$pr" --jq '.head.sha')" = "$head" ]; then break; fi
+            sleep 5
+          done
+          test "$(gh api "$pr" --jq '.head.sha')" = "$head"
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$BASE_SHA"
+          result="$(gh api --method PUT "$pr/merge" -f merge_method=merge -f sha="$head" -f commit_title='Merge Tencent WeKnora v0.9.1' --jq '.merged')"
+          test "$result" = true
+          gh api "$pr" --jq '{merged, merge_commit_sha, html_url}'
