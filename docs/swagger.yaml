@@ -5817,10 +5817,14 @@ definitions:
     - 7
     - 8
     - 9
+    - 10
+    - 11
     type: integer
     x-enum-comments:
       MatchTypeDataAnalysis: 数据分析匹配类型
       MatchTypeDirectLoad: 'Deprecated: reserved to preserve serialized enum values'
+      MatchTypeDocumentOverview: Exact named document evidence for an overview
+      MatchTypeLiteral: Literal body match, independent of vector payload versions
       MatchTypeParentChunk: 父Chunk匹配类型
       MatchTypeRelationChunk: 关系Chunk匹配类型
       MatchTypeWebSearch: 网络搜索匹配类型
@@ -5835,6 +5839,8 @@ definitions:
     - 网络搜索匹配类型
     - 'Deprecated: reserved to preserve serialized enum values'
     - 数据分析匹配类型
+    - Literal body match, independent of vector payload versions
+    - Exact named document evidence for an overview
     x-enum-varnames:
     - MatchTypeEmbedding
     - MatchTypeKeywords
@@ -5846,6 +5852,8 @@ definitions:
     - MatchTypeWebSearch
     - MatchTypeDirectLoad
     - MatchTypeDataAnalysis
+    - MatchTypeLiteral
+    - MatchTypeDocumentOverview
   github_com_Tencent_WeKnora_internal_types.MatchedImage:
     properties:
       chunk_id:

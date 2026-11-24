@@ -32967,11 +32967,15 @@
                 6,
                 7,
                 8,
-                9
+                9,
+                10,
+                11
             ],
             "x-enum-comments": {
                 "MatchTypeDataAnalysis": "数据分析匹配类型",
                 "MatchTypeDirectLoad": "Deprecated: reserved to preserve serialized enum values",
+                "MatchTypeDocumentOverview": "Exact named document evidence for an overview",
+                "MatchTypeLiteral": "Literal body match, independent of vector payload versions",
                 "MatchTypeParentChunk": "父Chunk匹配类型",
                 "MatchTypeRelationChunk": "关系Chunk匹配类型",
                 "MatchTypeWebSearch": "网络搜索匹配类型"
@@ -32986,7 +32990,9 @@
                 "",
                 "网络搜索匹配类型",
                 "Deprecated: reserved to preserve serialized enum values",
-                "数据分析匹配类型"
+                "数据分析匹配类型",
+                "Literal body match, independent of vector payload versions",
+                "Exact named document evidence for an overview"
             ],
             "x-enum-varnames": [
                 "MatchTypeEmbedding",
@@ -32998,7 +33004,9 @@
                 "MatchTypeGraph",
                 "MatchTypeWebSearch",
                 "MatchTypeDirectLoad",
-                "MatchTypeDataAnalysis"
+                "MatchTypeDataAnalysis",
+                "MatchTypeLiteral",
+                "MatchTypeDocumentOverview"
             ]
         },
         "github_com_Tencent_WeKnora_internal_types.MatchedImage": {
